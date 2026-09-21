@@ -74,3 +74,5 @@ Jenkins 每次构建归档:
 - 同步以 Jenkins Build Number 为幂等键。
 - Console Output 只用于排错。
 - PostgreSQL 不存储大型原始日志和 debug 目录。
+=======
+# scan-results-portal

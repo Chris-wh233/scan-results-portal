@@ -1,0 +1,309 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import datetime, timezone
+import configparser
+import json
+import tarfile
+from typing import Any
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from .archive import ArchiveMember, list_visible_members, read_visible_member
+from .config import Settings
+from .jenkins import JenkinsClient
+from .models import ScanTask
+from .parser import (
+    parse_sarif,
+    parse_nvr_from_path,
+    parse_scan_ini,
+    parse_summary,
+    summarize_findings,
+)
+from .services.sync_artifacts import (
+    MAX_ARCHIVE_BYTES,
+    REQUIRED_SCAN_FILES,
+    artifact_url as _artifact_url,
+    find_artifact as _find_artifact,
+    find_valid_scan_archive as _find_valid_scan_archive,
+    is_archive as _is_archive,
+    upsert_archive_members as _upsert_archive_members,
+    upsert_artifact as _upsert_artifact,
+)
+from .services.sync_results import (
+    replace_results as _replace_results,
+    set_ini as _set_ini,
+    set_manifest as _set_manifest,
+)
+
+MAX_PARSE_BYTES = 8 * 1024 * 1024
+
+
+@dataclass
+class SyncStats:
+    discovered: int = 0
+    synced: int = 0
+    failed: int = 0
+
+    def as_dict(self) -> dict[str, int]:
+        return {
+            "discovered": self.discovered,
+            "synced": self.synced,
+            "failed": self.failed,
+        }
+
+
+def _jenkins_time(milliseconds: Any) -> datetime | None:
+    if not milliseconds:
+        return None
+    return datetime.fromtimestamp(float(milliseconds) / 1000, tz=timezone.utc)
+
+
+def _cause_user(build: dict[str, Any]) -> str | None:
+    for action in build.get("actions") or []:
+        for cause in action.get("causes") or []:
+            return cause.get("userName") or cause.get("userId") or cause.get(
+                "shortDescription"
+            )
+    return None
+
+
+def _sync_build(
+    session: Session,
+    client: JenkinsClient,
+    settings: Settings,
+    build: dict[str, Any],
+) -> ScanTask:
+    number = int(build["number"])
+    job = settings.jenkins_job
+    task = session.scalar(
+        select(ScanTask).where(
+            ScanTask.jenkins_job_full_name == job,
+            ScanTask.jenkins_build_number == number,
+        )
+    )
+    if task is None:
+        task = ScanTask(
+            jenkins_job_full_name=job,
+            jenkins_build_number=number,
+            lifecycle_state="DISCOVERED",
+            scan_result="NOT_AVAILABLE",
+            gate_result="NOT_EVALUATED",
+            sync_status="PENDING",
+        )
+        session.add(task)
+        session.flush()
+
+    detail = client.get_build(job, number)
+    building = bool(detail.get("building"))
+    task.jenkins_build_url = detail.get("url") or build.get("url")
+    task.lifecycle_state = "RUNNING" if building else "COMPLETED"
+    task.execution_result = detail.get("result") or build.get("result")
+    if task.created_at is None:
+        task.created_at = _jenkins_time(detail.get("timestamp") or build.get("timestamp"))
+    if task.started_at is None:
+        task.started_at = task.created_at
+    task.triggered_by = _cause_user(detail)
+
+    artifacts = detail.get("artifacts") or []
+    for artifact in artifacts:
+        _upsert_artifact(session, task, artifact, client, job, number)
+    session.flush()
+
+    top_level_names = {
+        str(artifact.get("fileName") or path.rsplit("/", 1)[-1])
+        for artifact in artifacts
+        for path in [artifact.get("relativePath") or artifact.get("fileName") or ""]
+        if path
+    }
+    archive_contents: list[tuple[str, bytes, list[ArchiveMember]]] = []
+    for artifact in artifacts:
+        archive_path = artifact.get("relativePath") or artifact.get("fileName") or ""
+        size = artifact.get("size")
+        if not archive_path or not _is_archive(archive_path):
+            continue
+        if size is not None and int(size) > MAX_ARCHIVE_BYTES:
+            continue
+        try:
+            content = client.get_artifact(job, number, archive_path)
+            members = list_visible_members(content)
+        except (OSError, tarfile.TarError, ValueError):
+            continue
+        archive_contents.append((archive_path, content, members))
+        _upsert_archive_members(session, task, archive_path, members, top_level_names)
+    valid_scan_archive = _find_valid_scan_archive(archive_contents)
+
+    artifact_paths = [
+        artifact.get("relativePath") or artifact.get("fileName") or ""
+        for artifact in artifacts
+    ]
+    inferred_nvr = next(
+        (parsed for parsed in map(parse_nvr_from_path, artifact_paths) if parsed),
+        None,
+    )
+    if inferred_nvr:
+        for field, value in inferred_nvr.items():
+            if not getattr(task, field):
+                setattr(task, field, value)
+        if not task.srpm_name and task.nvr:
+            task.srpm_name = f"{task.nvr}.src.rpm"
+
+    def read_artifact(basename: str) -> bytes | None:
+        artifact = _find_artifact(artifacts, basename)
+        if not artifact:
+            return None
+        size = artifact.get("size")
+        if size is not None and int(size) > MAX_PARSE_BYTES:
+            return None
+        path = artifact.get("relativePath") or artifact.get("fileName")
+        if not path:
+            return None
+        return client.get_artifact(job, number, path)
+
+    def read_archive_artifact(basename: str) -> bytes | None:
+        archives = [valid_scan_archive] if valid_scan_archive else archive_contents
+        for archive in archives:
+            if archive is None:
+                continue
+            _, content, members = archive
+            member = next((item for item in members if item.name == basename), None)
+            if member is None:
+                continue
+            try:
+                return read_visible_member(content, member.path)
+            except (KeyError, OSError, tarfile.TarError):
+                continue
+        return None
+
+    def read_result_artifact(basename: str) -> bytes | None:
+        archive_result = read_archive_artifact(basename)
+        if archive_result is not None:
+            return archive_result
+        return read_artifact(basename)
+
+    manifest_bytes = read_result_artifact("scan-manifest.json")
+    if manifest_bytes:
+        try:
+            _set_manifest(task, json.loads(manifest_bytes.decode("utf-8")))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            pass
+
+    ini_bytes = read_result_artifact("scan.ini")
+    ini_valid = False
+    if ini_bytes:
+        try:
+            ini_metadata = parse_scan_ini(ini_bytes.decode("utf-8"))
+            if not ini_metadata.get("raw"):
+                raise ValueError("scan.ini has no metadata")
+            _set_ini(task, ini_metadata)
+            ini_valid = True
+        except (UnicodeDecodeError, ValueError, configparser.Error):
+            pass
+
+    summary_rows: list[dict[str, Any]] = []
+    summary_bytes = read_result_artifact("scan-results-summary.txt")
+    if summary_bytes is not None:
+        summary_rows = parse_summary(summary_bytes.decode("utf-8", errors="replace"))
+
+    findings: list[dict[str, Any]] = []
+    sarif_artifact = next(
+        (
+            artifact
+            for artifact in artifacts
+            if str(artifact.get("relativePath") or artifact.get("fileName") or "").lower().endswith(".sarif")
+        ),
+        None,
+    )
+    sarif_bytes = None
+    if sarif_artifact:
+        path = sarif_artifact.get("relativePath") or sarif_artifact.get("fileName")
+        sarif_bytes = client.get_artifact(job, number, path)
+    else:
+        for _, content, members in archive_contents:
+            member = next((item for item in members if item.name.lower().endswith(".sarif")), None)
+            if member is not None:
+                try:
+                    sarif_bytes = read_visible_member(content, member.path)
+                except (KeyError, OSError, tarfile.TarError):
+                    sarif_bytes = None
+                break
+    if sarif_bytes:
+        parsed = parse_sarif(sarif_bytes.decode("utf-8", errors="replace"))
+        findings = parsed["findings"]
+        task.scanner = task.scanner or parsed.get("scanner")
+        task.scanner_version = task.scanner_version or parsed.get("scanner_version")
+        if not summary_rows:
+            summary_rows = summarize_findings(findings)
+
+    has_valid_result = (
+        valid_scan_archive is not None
+        and ini_valid
+        and summary_bytes is not None
+    )
+    if has_valid_result or summary_rows or findings:
+        _replace_results(session, task, summary_rows, findings)
+        task.total_findings = len(findings) if findings else sum(
+            int(row["count"]) for row in summary_rows
+        )
+
+    if has_valid_result:
+        if task.scan_result != "FAILED":
+            task.scan_result = "FINISHED"
+    elif task.scan_result != "FAILED" and (
+        task.scan_finished_at is not None or not building
+    ):
+        task.scan_result = "NOT_AVAILABLE"
+    elif task.scan_result != "FAILED":
+        task.scan_result = "RUNNING"
+
+    now = datetime.now(timezone.utc)
+    task.last_synced_at = now
+    task.sync_status = "SYNCED"
+    task.sync_error = None
+    return task
+
+
+def sync_once(settings: Settings, session: Session) -> SyncStats:
+    stats = SyncStats()
+    client = JenkinsClient(
+        settings.jenkins_base_url,
+        settings.jenkins_user,
+        settings.jenkins_token,
+        settings.request_timeout_seconds,
+    )
+    try:
+        builds = client.list_builds(settings.jenkins_job, settings.recent_build_limit)
+        for build in builds:
+            stats.discovered += 1
+            try:
+                _sync_build(session, client, settings, build)
+                session.commit()
+                stats.synced += 1
+            except Exception as exc:
+                session.rollback()
+                number = build.get("number")
+                if number is not None:
+                    task = session.scalar(
+                        select(ScanTask).where(
+                            ScanTask.jenkins_job_full_name == settings.jenkins_job,
+                            ScanTask.jenkins_build_number == int(number),
+                        )
+                    )
+                    if task is None:
+                        task = ScanTask(
+                            jenkins_job_full_name=settings.jenkins_job,
+                            jenkins_build_number=int(number),
+                            lifecycle_state="DISCOVERED",
+                            scan_result="NOT_AVAILABLE",
+                            gate_result="NOT_EVALUATED",
+                        )
+                        session.add(task)
+                    task.sync_status = "ERROR"
+                    task.sync_error = str(exc)[:4000]
+                    task.last_synced_at = datetime.now(timezone.utc)
+                    session.commit()
+                stats.failed += 1
+    finally:
+        client.close()
+    return stats

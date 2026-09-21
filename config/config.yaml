@@ -1,0 +1,13 @@
+jenkins:
+  base_url: http://10.130.43.223:8080
+  job: csmock-curl-test
+  scan_stage: csmock 扫描 curl
+
+sync:
+  recent_build_limit: 20
+  request_timeout_seconds: 15
+
+ui:
+  title: Scan Results Portal
+  page_size: 50
+  timezone: Asia/Shanghai

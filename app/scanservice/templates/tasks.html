@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-heading">
+  <div>
+    <h1>Scan Tasks</h1>
+    <p class="muted">{{ total }} task(s)</p>
+  </div>
+  <button id="refresh" type="button" aria-label="刷新 Jenkins" title="刷新 Jenkins">↻</button>
+</div>
+
+<form class="filters" method="get">
+  <input name="search" value="{{ search }}" placeholder="Label">
+  <select name="scan_result">
+    <option value="">All states</option>
+    {% for value in ["RUNNING", "FINISHED", "FAILED", "NOT_AVAILABLE"] %}
+    <option value="{{ value }}" {% if scan_result == value %}selected{% endif %}>{{ value }}</option>
+    {% endfor %}
+  </select>
+  <button type="submit">Search</button>
+</form>
+
+<div id="sync-status" class="muted"></div>
+<div class="table-wrap">
+<table class="tasks-table">
+  <thead>
+    <tr>
+      <th>ID</th><th>Method</th><th>Label</th>
+      <th>State</th><th>Findings</th><th>Jenkins</th>
+      <th>Created</th><th>Finished</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for task in tasks %}
+    <tr>
+      <td><a href="/tasks/{{ task.id }}">{{ task.id }}</a></td>
+      <td>{{ task|scan_method }}</td>
+      <td>{{ task.srpm_name or (task.nvr ~ ".src.rpm" if task.nvr else "—") }}</td>
+      <td><span class="status status-{{ task.scan_result|lower }}">{{ task.scan_result }}</span></td>
+      <td>{{ task.total_findings if task.total_findings is not none else "—" }}</td>
+      <td>
+        {% if task.jenkins_build_url %}
+        <a href="{{ task.jenkins_build_url }}">#{{ task.jenkins_build_number }}</a>
+        {% else %}
+        #{{ task.jenkins_build_number }}
+        {% endif %}
+      </td>
+      <td>{{ task.created_at|timestamp }}</td>
+      <td>{{ task.finished_at|timestamp }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="8" class="empty">No tasks found.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+
+{% if total > page_size %}
+<div class="pagination">
+  {% if page > 1 %}
+  <a href="?page={{ page - 1 }}&search={{ search }}&scan_result={{ scan_result }}">Previous</a>
+  {% endif %}
+  <span>Page {{ page }}</span>
+  {% if page * page_size < total %}
+  <a href="?page={{ page + 1 }}&search={{ search }}&scan_result={{ scan_result }}">Next</a>
+  {% endif %}
+</div>
+{% endif %}
+
+<script>
+document.getElementById("refresh").addEventListener("click", async () => {
+  const status = document.getElementById("sync-status");
+  const button = document.getElementById("refresh");
+  button.disabled = true;
+  status.textContent = "Synchronizing...";
+  try {
+    const response = await fetch("/api/v1/sync", {method: "POST"});
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || "sync failed");
+    status.textContent = "Synced " + data.synced + "; failed " + data.failed + ". Reloading...";
+    window.location.reload();
+  } catch (error) {
+    status.textContent = error.message;
+    button.disabled = false;
+  }
+});
+</script>
+{% endblock %}

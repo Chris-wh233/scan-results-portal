@@ -5,10 +5,10 @@ from typing import Any
 from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
-from ..models import ScanFinding, ScanSummary, ScanTask
+from ..models import SrpmScanFinding, SrpmScanSummary, SrpmScanTask
 
 
-def set_manifest(task: ScanTask, manifest: dict[str, Any]) -> None:
+def set_manifest(task: SrpmScanTask, manifest: dict[str, Any]) -> None:
     for field in (
         "package_name",
         "version",
@@ -34,7 +34,7 @@ def set_manifest(task: ScanTask, manifest: dict[str, Any]) -> None:
     task.scan_metadata = {**(task.scan_metadata or {}), "manifest": manifest}
 
 
-def set_ini(task: ScanTask, metadata: dict[str, Any]) -> None:
+def set_ini(task: SrpmScanTask, metadata: dict[str, Any]) -> None:
     for source, target in (
         ("scanner", "scanner"),
         ("scanner_version", "scanner_version"),
@@ -49,15 +49,15 @@ def set_ini(task: ScanTask, metadata: dict[str, Any]) -> None:
 
 def replace_results(
     session: Session,
-    task: ScanTask,
+    task: SrpmScanTask,
     summaries: list[dict[str, Any]],
     findings: list[dict[str, Any]],
 ) -> None:
-    session.execute(delete(ScanSummary).where(ScanSummary.task_id == task.id))
-    session.execute(delete(ScanFinding).where(ScanFinding.task_id == task.id))
+    session.execute(delete(SrpmScanSummary).where(SrpmScanSummary.task_id == task.id))
+    session.execute(delete(SrpmScanFinding).where(SrpmScanFinding.task_id == task.id))
     for summary in summaries:
         session.add(
-            ScanSummary(
+            SrpmScanSummary(
                 task_id=task.id,
                 checker=str(summary["checker"]),
                 issue_type=str(summary["issue_type"]),
@@ -70,4 +70,4 @@ def replace_results(
         if fingerprint in seen:
             continue
         seen.add(fingerprint)
-        session.add(ScanFinding(task_id=task.id, **finding))
+        session.add(SrpmScanFinding(task_id=task.id, **finding))

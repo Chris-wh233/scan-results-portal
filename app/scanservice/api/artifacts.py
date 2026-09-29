@@ -5,15 +5,15 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from ..db import get_db
-from ..services.artifact_service import (
+from ..modules.srpm.services.artifacts import (
     archive_member_response,
     artifact_response,
     get_artifact_row,
 )
-from ..services.task_service import get_task
+from ..modules.srpm.services.task_service import get_task
 
 
-router = APIRouter(prefix="/api/v1/tasks", tags=["artifacts"])
+router = APIRouter(tags=["artifacts"])
 
 
 @router.get("/{task_id}/artifacts/{artifact_id}/view")

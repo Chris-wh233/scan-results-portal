@@ -7,10 +7,10 @@ from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..db import get_db
-from ..sync import sync_once
+from ..modules.srpm.services.synchronization import sync_once
 
 
-router = APIRouter(prefix="/api/v1", tags=["sync"])
+router = APIRouter(tags=["sync"])
 
 
 @router.post("/sync")

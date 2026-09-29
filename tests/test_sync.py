@@ -5,8 +5,8 @@ from sqlalchemy.orm import sessionmaker
 
 from scanservice.config import Settings
 from scanservice.db import Base
-from scanservice.models import ScanSummary, ScanTask
-from scanservice.sync import _sync_build
+from scanservice.modules.srpm.models import SrpmScanSummary, SrpmScanTask
+from scanservice.modules.srpm.services.synchronization import _sync_build
 
 
 class FakeJenkinsClient:
@@ -85,15 +85,13 @@ def test_sync_build_uses_sarif_summary_fallback():
         jenkins_user="",
         jenkins_token="",
         ingest_token="",
-        jenkins_job="csmock-curl-test",
-        scan_stage="",
         recent_build_limit=5,
         request_timeout_seconds=5,
         title="Test",
         page_size=50,
     )
 
-    task = _sync_build(session, client, settings, {"number": 5})
+    task = _sync_build(session, client, settings, {"number": 5}, job="csmock-curl-test")
     session.commit()
 
     assert task.srpm_name == "curl-8.4.0-9.ocs23.src.rpm"
@@ -103,4 +101,46 @@ def test_sync_build_uses_sarif_summary_fallback():
     assert task.scanner == "csdiff"
     assert task.total_findings == 2
     assert task.scan_result == "NOT_AVAILABLE"
-    assert session.scalars(select(ScanSummary)).one().count == 2
+    assert session.scalars(select(SrpmScanSummary)).one().count == 2
+
+
+def test_sync_build_separates_jobs_with_same_build_number():
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    session = sessionmaker(bind=engine)()
+    client = FakeJenkinsClient(
+        {
+            "number": 5,
+            "url": "http://jenkins/job/packages/5/",
+            "timestamp": 1_700_000_000_000,
+            "duration": 2_000,
+            "building": False,
+            "result": "SUCCESS",
+            "artifacts": [],
+            "actions": [],
+        },
+        [],
+    )
+    settings = Settings(
+        database_url="sqlite://",
+        jenkins_base_url="http://jenkins",
+        jenkins_user="",
+        jenkins_token="",
+        ingest_token="",
+        recent_build_limit=5,
+        request_timeout_seconds=5,
+        title="Test",
+        page_size=50,
+    )
+
+    _sync_build(session, client, settings, {"number": 5}, job="packages/curl")
+    _sync_build(session, client, settings, {"number": 5}, job="packages/openssl")
+    session.commit()
+
+    tasks = session.scalars(
+        select(SrpmScanTask).order_by(SrpmScanTask.jenkins_job_full_name)
+    ).all()
+    assert [task.jenkins_job_full_name for task in tasks] == [
+        "packages/curl",
+        "packages/openssl",
+    ]

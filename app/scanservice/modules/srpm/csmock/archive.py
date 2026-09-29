@@ -8,7 +8,7 @@ import tarfile
 
 @dataclass(frozen=True)
 class ArchiveMember:
-    """A visible file from the scan result archive."""
+    """A visible first-level file from a csmock result archive."""
 
     path: str
     name: str
@@ -32,9 +32,9 @@ def _visible_member(member: tarfile.TarInfo) -> ArchiveMember | None:
     if parts is None:
         return None
 
-    # csmock archives normally contain NVR/<file>.  Only expose files directly
-    # below that directory and deliberately omit NVR/debug/....  Supporting a
-    # flat archive as well keeps the reader tolerant of custom Jenkins steps.
+    # csmock archives normally contain NVR/<file>. Only expose files directly
+    # below that directory and deliberately omit NVR/debug/.... Supporting a
+    # flat archive keeps the reader tolerant of custom Jenkins steps.
     if len(parts) == 1:
         display_name = parts[0]
     else:

@@ -3,7 +3,7 @@
 {% block content %}
 <div class="page-heading">
   <div>
-    <h1>Scan Tasks</h1>
+    <h1>SRPM Scan Tasks</h1>
     <p class="muted">{{ total }} task(s)</p>
   </div>
   <button id="refresh" type="button" aria-label="刷新 Jenkins" title="刷新 Jenkins">↻</button>
@@ -33,7 +33,7 @@
   <tbody>
   {% for task in tasks %}
     <tr>
-      <td><a href="/tasks/{{ task.id }}">{{ task.id }}</a></td>
+      <td><a href="/srpm/{{ task.id }}">{{ task.id }}</a></td>
       <td>{{ task|scan_method }}</td>
       <td>{{ task.srpm_name or (task.nvr ~ ".src.rpm" if task.nvr else "—") }}</td>
       <td><span class="status status-{{ task.scan_result|lower }}">{{ task.scan_result }}</span></td>
@@ -74,7 +74,7 @@ document.getElementById("refresh").addEventListener("click", async () => {
   button.disabled = true;
   status.textContent = "Synchronizing...";
   try {
-    const response = await fetch("/api/v1/sync", {method: "POST"});
+    const response = await fetch("/api/v1/srpm/sync", {method: "POST"});
     const data = await response.json();
     if (!response.ok) throw new Error(data.detail || "sync failed");
     status.textContent = "Synced " + data.synced + "; failed " + data.failed + ". Reloading...";

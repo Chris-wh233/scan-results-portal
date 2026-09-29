@@ -20,9 +20,27 @@ def _read_yaml(path: str) -> dict[str, Any]:
 
 def _env_or(mapping: dict[str, Any], key: str, env_name: str, default: Any) -> Any:
     value = os.getenv(env_name)
-    if value is not None:
+    if value not in {None, ""}:
         return value
     return mapping.get(key, default)
+
+
+def _string_list(value: Any) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    if isinstance(value, str):
+        return tuple(item.strip() for item in value.split(",") if item.strip())
+    if isinstance(value, (list, tuple)):
+        return tuple(str(item).strip() for item in value if str(item).strip())
+    return ()
+
+
+def _bool_value(value: Any, default: bool) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() not in {"0", "false", "no", "off"}
 
 
 @dataclass(frozen=True)
@@ -32,19 +50,34 @@ class Settings:
     jenkins_user: str
     jenkins_token: str
     ingest_token: str
-    jenkins_job: str
-    scan_stage: str
     recent_build_limit: int
     request_timeout_seconds: float
     title: str
     page_size: int
+    jenkins_jobs: tuple[str, ...] = ()
+    discovery_folders: tuple[str, ...] = ()
+    discovery_recursive: bool = True
+
+    @property
+    def configured_jobs(self) -> tuple[str, ...]:
+        return tuple(dict.fromkeys(job for job in self.jenkins_jobs if job))
 
     @classmethod
     def from_environment(cls) -> "Settings":
         config = _read_yaml(os.getenv("SCAN_SERVICE_CONFIG", "/etc/scan-service/config.yaml"))
         jenkins = config.get("jenkins", {})
+        discovery = jenkins.get("discovery", {})
         sync = config.get("sync", {})
         ui = config.get("ui", {})
+
+        configured_jobs = _string_list(
+            _env_or(jenkins, "jobs", "JENKINS_JOBS", ())
+        )
+        discovery_jobs = _string_list(discovery.get("extra_jobs"))
+        all_jobs = tuple(dict.fromkeys((*configured_jobs, *discovery_jobs)))
+        folders = _string_list(
+            _env_or(discovery, "folders", "JENKINS_DISCOVERY_FOLDERS", ())
+        )
 
         return cls(
             database_url=os.getenv("DATABASE_URL", "sqlite:///./scanservice.db"),
@@ -52,8 +85,6 @@ class Settings:
             jenkins_user=os.getenv("JENKINS_USER", ""),
             jenkins_token=os.getenv("JENKINS_TOKEN", ""),
             ingest_token=os.getenv("SCAN_SERVICE_INGEST_TOKEN", ""),
-            jenkins_job=str(_env_or(jenkins, "job", "JENKINS_JOB", "")),
-            scan_stage=str(jenkins.get("scan_stage", "")),
             recent_build_limit=int(
                 _env_or(sync, "recent_build_limit", "RECENT_BUILD_LIMIT", 20)
             ),
@@ -62,6 +93,17 @@ class Settings:
             ),
             title=str(_env_or(ui, "title", "SCAN_SERVICE_TITLE", "Scan Results Portal")),
             page_size=int(ui.get("page_size", 50)),
+            jenkins_jobs=all_jobs,
+            discovery_folders=folders,
+            discovery_recursive=_bool_value(
+                _env_or(
+                    discovery,
+                    "recursive",
+                    "JENKINS_DISCOVERY_RECURSIVE",
+                    None,
+                ),
+                True,
+            ),
         )
 
 

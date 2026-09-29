@@ -7,7 +7,7 @@ from fastapi import HTTPException
 from sqlalchemy import desc, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
-from ..models import ScanTask
+from ..models import SrpmScanTask
 
 
 def format_timestamp(value: datetime | None) -> str:
@@ -16,14 +16,14 @@ def format_timestamp(value: datetime | None) -> str:
     return value.strftime("%Y-%m-%d %H:%M:%S")
 
 
-def scan_method(task: ScanTask) -> str:
+def scan_method(task: SrpmScanTask) -> str:
     metadata = task.scan_metadata or {}
     manifest = metadata.get("manifest") or {}
     scan_ini = metadata.get("scan_ini") or {}
     return manifest.get("method") or scan_ini.get("method") or "csmock"
 
 
-def task_payload(task: ScanTask) -> dict[str, Any]:
+def task_payload(task: SrpmScanTask) -> dict[str, Any]:
     return {
         "id": task.id,
         "jenkins_job_full_name": task.jenkins_job_full_name,
@@ -61,13 +61,13 @@ def task_filters(search: str | None, scan_result: str | None) -> list[Any]:
     filters = []
     if search:
         term = f"%{search}%"
-        filters.append(or_(ScanTask.srpm_name.ilike(term), ScanTask.nvr.ilike(term)))
+        filters.append(or_(SrpmScanTask.srpm_name.ilike(term), SrpmScanTask.nvr.ilike(term)))
     if scan_result:
-        filters.append(ScanTask.scan_result == scan_result.upper())
+        filters.append(SrpmScanTask.scan_result == scan_result.upper())
     return filters
 
 
-def detail_values(task: ScanTask) -> dict[str, Any]:
+def detail_values(task: SrpmScanTask) -> dict[str, Any]:
     metadata = task.scan_metadata or {}
     manifest = metadata.get("manifest") or {}
     scan_ini = metadata.get("scan_ini") or {}
@@ -102,7 +102,7 @@ def detail_values(task: ScanTask) -> dict[str, Any]:
     return {"method": scan_method(task), "args": args_fields, "srpm_name": srpm_name}
 
 
-def apply_task_fields(task: ScanTask, values: dict[str, Any]) -> None:
+def apply_task_fields(task: SrpmScanTask, values: dict[str, Any]) -> None:
     for field, value in values.items():
         if field in {"jenkins_build_number", "jenkins_job_full_name"} or not hasattr(
             task, field
@@ -111,15 +111,15 @@ def apply_task_fields(task: ScanTask, values: dict[str, Any]) -> None:
         setattr(task, field, value)
 
 
-def get_task(db: Session, task_id: int) -> ScanTask:
+def get_task(db: Session, task_id: int) -> SrpmScanTask:
     task = db.scalar(
-        select(ScanTask)
+        select(SrpmScanTask)
         .options(
-            selectinload(ScanTask.artifacts),
-            selectinload(ScanTask.summaries),
-            selectinload(ScanTask.findings),
+            selectinload(SrpmScanTask.artifacts),
+            selectinload(SrpmScanTask.summaries),
+            selectinload(SrpmScanTask.findings),
         )
-        .where(ScanTask.id == task_id)
+        .where(SrpmScanTask.id == task_id)
     )
     if task is None:
         raise HTTPException(status_code=404, detail="scan task not found")
@@ -132,13 +132,13 @@ def list_task_page(
     scan_result: str | None,
     page: int,
     page_size: int,
-) -> tuple[int, list[ScanTask]]:
+) -> tuple[int, list[SrpmScanTask]]:
     filters = task_filters(search, scan_result)
-    total = db.scalar(select(func.count()).select_from(ScanTask).where(*filters)) or 0
+    total = db.scalar(select(func.count()).select_from(SrpmScanTask).where(*filters)) or 0
     rows = db.scalars(
-        select(ScanTask)
+        select(SrpmScanTask)
         .where(*filters)
-        .order_by(desc(ScanTask.id))
+        .order_by(desc(SrpmScanTask.created_at), desc(SrpmScanTask.id))
         .offset((page - 1) * page_size)
         .limit(page_size)
     ).all()

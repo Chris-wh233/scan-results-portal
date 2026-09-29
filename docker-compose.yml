@@ -1,6 +1,7 @@
 services:
   postgres:
     image: lcr.loongnix.cn/library/postgres:14-alpine3.23
+    container_name: scan-results-portal-postgres
     environment:
       POSTGRES_DB: scanportal
       POSTGRES_USER: scanportal
@@ -15,6 +16,8 @@ services:
     restart: unless-stopped
 
   scan-service:
+    image: scan-results-portal:latest
+    container_name: scan-results-portal-service
     build:
       context: .
     depends_on:
@@ -26,7 +29,9 @@ services:
       JENKINS_USER: ${JENKINS_USER:?JENKINS_USER must be set in .env}
       JENKINS_TOKEN: ${JENKINS_TOKEN:?JENKINS_TOKEN must be set in .env}
       SCAN_SERVICE_INGEST_TOKEN: ${SCAN_SERVICE_INGEST_TOKEN:?SCAN_SERVICE_INGEST_TOKEN must be set in .env}
-      JENKINS_JOB: ${JENKINS_JOB:?JENKINS_JOB must be set in .env}
+      JENKINS_JOBS: ${JENKINS_JOBS:-}
+      JENKINS_DISCOVERY_FOLDERS: ${JENKINS_DISCOVERY_FOLDERS:-}
+      JENKINS_DISCOVERY_RECURSIVE: ${JENKINS_DISCOVERY_RECURSIVE:-true}
       RECENT_BUILD_LIMIT: ${RECENT_BUILD_LIMIT:-20}
       SCAN_SERVICE_TITLE: ${SCAN_SERVICE_TITLE:-Scan Results Portal}
       SCAN_SERVICE_CONFIG: /etc/scan-service/config.yaml

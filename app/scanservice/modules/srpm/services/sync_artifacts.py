@@ -6,10 +6,10 @@ from urllib.parse import quote
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..archive import ArchiveMember, list_visible_members
-from ..jenkins import JenkinsClient
-from ..models import ScanArtifact, ScanTask
-from ..parser import classify_artifact
+from ..csmock.archive import ArchiveMember, list_visible_members
+from ....jenkins import JenkinsClient
+from ..models import SrpmScanArtifact, SrpmScanTask
+from ..parsers.csmock import classify_artifact
 
 
 MAX_ARCHIVE_BYTES = 512 * 1024 * 1024
@@ -51,7 +51,7 @@ def artifact_url(
 
 def upsert_artifact(
     session: Session,
-    task: ScanTask,
+    task: SrpmScanTask,
     artifact: dict[str, object],
     client: JenkinsClient,
     job: str,
@@ -62,13 +62,13 @@ def upsert_artifact(
         return
     relative_path = str(relative_path)
     row = session.scalar(
-        select(ScanArtifact).where(
-            ScanArtifact.task_id == task.id,
-            ScanArtifact.relative_path == relative_path,
+        select(SrpmScanArtifact).where(
+            SrpmScanArtifact.task_id == task.id,
+            SrpmScanArtifact.relative_path == relative_path,
         )
     )
     if row is None:
-        row = ScanArtifact(
+        row = SrpmScanArtifact(
             task_id=task.id,
             relative_path=relative_path,
             name=str(artifact.get("fileName") or relative_path),
@@ -100,14 +100,14 @@ def find_valid_scan_archive(
 
 def upsert_archive_members(
     session: Session,
-    task: ScanTask,
+    task: SrpmScanTask,
     archive_path: str,
     members: list[ArchiveMember],
     top_level_names: set[str],
 ) -> None:
     prefix = f"{archive_path}::"
     old_rows = session.scalars(
-        select(ScanArtifact).where(ScanArtifact.task_id == task.id)
+        select(SrpmScanArtifact).where(SrpmScanArtifact.task_id == task.id)
     ).all()
     existing = {
         row.relative_path: row
@@ -125,12 +125,12 @@ def upsert_archive_members(
         current_paths.add(relative_path)
         row = existing.get(relative_path)
         if row is None:
-            row = ScanArtifact(task_id=task.id, relative_path=relative_path)
+            row = SrpmScanArtifact(task_id=task.id, relative_path=relative_path)
             session.add(row)
         row.name = member.name
         row.artifact_type = classify_artifact(member.name)
         row.jenkins_url = (
-            f"/api/v1/tasks/{task.id}/archive/"
+            f"/api/v1/srpm/tasks/{task.id}/archive/"
             f"{quote(relative_path, safe='')}"
         )
         row.size_bytes = member.size

@@ -92,7 +92,9 @@ def parse_summary(content: str) -> list[dict[str, Any]]:
     return summaries
 
 
-def _fingerprint(result: dict[str, Any], file_path: str | None, line: int | None) -> str:
+def _fingerprint(
+    result: dict[str, Any], file_path: str | None, line: int | None
+) -> str:
     fingerprints = result.get("fingerprints") or {}
     for value in fingerprints.values():
         if value:
@@ -150,7 +152,7 @@ def parse_sarif(content: str) -> dict[str, Any]:
 
 
 def summarize_findings(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Build a stable summary when Jenkins archives SARIF but not csmock's text summary."""
+    """Build a stable summary when Jenkins archives SARIF without text summary."""
     counts: dict[tuple[str, str], int] = {}
     for finding in findings:
         checker = str(finding.get("checker") or "unknown")
@@ -178,11 +180,7 @@ def parse_nvr_from_path(path: str) -> dict[str, str] | None:
     if len(parts) != 3 or not all(parts):
         return None
     _, version, release = parts
-    return {
-        "version": version,
-        "release": release,
-        "nvr": name,
-    }
+    return {"version": version, "release": release, "nvr": name}
 
 
 def classify_artifact(path: str) -> str:

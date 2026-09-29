@@ -10,18 +10,29 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .archive import ArchiveMember, list_visible_members, read_visible_member
-from .config import Settings
-from .jenkins import JenkinsClient
-from .models import ScanTask
-from .parser import (
+from ..csmock.archive import (
+    ArchiveMember,
+    list_visible_members,
+    read_visible_member,
+)
+from ....config import Settings
+from ....jenkins import JenkinsClient
+from ..models import SrpmScanTask
+from ..parsers.csmock import (
     parse_sarif,
     parse_nvr_from_path,
     parse_scan_ini,
     parse_summary,
     summarize_findings,
 )
-from .services.sync_artifacts import (
+from ..domain.state import (
+    SRPM_FAILED,
+    SRPM_FINISHED,
+    SRPM_NOT_AVAILABLE,
+    result_after_unavailable_archive,
+    result_after_valid_archive,
+)
+from .sync_artifacts import (
     MAX_ARCHIVE_BYTES,
     REQUIRED_SCAN_FILES,
     artifact_url as _artifact_url,
@@ -31,7 +42,7 @@ from .services.sync_artifacts import (
     upsert_archive_members as _upsert_archive_members,
     upsert_artifact as _upsert_artifact,
 )
-from .services.sync_results import (
+from .sync_results import (
     replace_results as _replace_results,
     set_ini as _set_ini,
     set_manifest as _set_manifest,
@@ -74,21 +85,24 @@ def _sync_build(
     client: JenkinsClient,
     settings: Settings,
     build: dict[str, Any],
-) -> ScanTask:
+    job: str | None = None,
+) -> SrpmScanTask:
     number = int(build["number"])
-    job = settings.jenkins_job
+    job = job or str(build.get("jenkins_job_full_name") or "")
+    if not job:
+        raise ValueError("Jenkins job is required to synchronize a build")
     task = session.scalar(
-        select(ScanTask).where(
-            ScanTask.jenkins_job_full_name == job,
-            ScanTask.jenkins_build_number == number,
+        select(SrpmScanTask).where(
+            SrpmScanTask.jenkins_job_full_name == job,
+            SrpmScanTask.jenkins_build_number == number,
         )
     )
     if task is None:
-        task = ScanTask(
+        task = SrpmScanTask(
             jenkins_job_full_name=job,
             jenkins_build_number=number,
             lifecycle_state="DISCOVERED",
-            scan_result="NOT_AVAILABLE",
+            scan_result=SRPM_NOT_AVAILABLE,
             gate_result="NOT_EVALUATED",
             sync_status="PENDING",
         )
@@ -248,20 +262,30 @@ def _sync_build(
         )
 
     if has_valid_result:
-        if task.scan_result != "FAILED":
-            task.scan_result = "FINISHED"
-    elif task.scan_result != "FAILED" and (
-        task.scan_finished_at is not None or not building
-    ):
-        task.scan_result = "NOT_AVAILABLE"
-    elif task.scan_result != "FAILED":
-        task.scan_result = "RUNNING"
+        if task.scan_result != SRPM_FAILED:
+            task.scan_result = result_after_valid_archive()
+    elif task.scan_result not in {SRPM_FAILED, SRPM_FINISHED}:
+        task.scan_result = result_after_unavailable_archive(
+            building=building,
+            ended=task.scan_finished_at is not None,
+        )
 
     now = datetime.now(timezone.utc)
     task.last_synced_at = now
     task.sync_status = "SYNCED"
     task.sync_error = None
     return task
+
+
+def sync_build(
+    session: Session,
+    client: JenkinsClient,
+    settings: Settings,
+    build: dict[str, Any],
+    job_full_name: str | None = None,
+) -> SrpmScanTask:
+    """Synchronize one SRPM build using its explicit Jenkins Job identity."""
+    return _sync_build(session, client, settings, build, job=job_full_name)
 
 
 def sync_once(settings: Settings, session: Session) -> SyncStats:
@@ -273,37 +297,52 @@ def sync_once(settings: Settings, session: Session) -> SyncStats:
         settings.request_timeout_seconds,
     )
     try:
-        builds = client.list_builds(settings.jenkins_job, settings.recent_build_limit)
-        for build in builds:
-            stats.discovered += 1
+        jobs = list(settings.configured_jobs)
+        if settings.discovery_folders:
+            jobs.extend(
+                client.discover_jobs(
+                    settings.discovery_folders,
+                    recursive=settings.discovery_recursive,
+                )
+            )
+        jobs = list(dict.fromkeys(job for job in jobs if job))
+
+        for job in jobs:
             try:
-                _sync_build(session, client, settings, build)
-                session.commit()
-                stats.synced += 1
-            except Exception as exc:
-                session.rollback()
-                number = build.get("number")
-                if number is not None:
-                    task = session.scalar(
-                        select(ScanTask).where(
-                            ScanTask.jenkins_job_full_name == settings.jenkins_job,
-                            ScanTask.jenkins_build_number == int(number),
-                        )
-                    )
-                    if task is None:
-                        task = ScanTask(
-                            jenkins_job_full_name=settings.jenkins_job,
-                            jenkins_build_number=int(number),
-                            lifecycle_state="DISCOVERED",
-                            scan_result="NOT_AVAILABLE",
-                            gate_result="NOT_EVALUATED",
-                        )
-                        session.add(task)
-                    task.sync_status = "ERROR"
-                    task.sync_error = str(exc)[:4000]
-                    task.last_synced_at = datetime.now(timezone.utc)
-                    session.commit()
+                builds = client.list_builds(job, settings.recent_build_limit)
+            except Exception:
                 stats.failed += 1
+                continue
+            for build in builds:
+                stats.discovered += 1
+                try:
+                    _sync_build(session, client, settings, build, job=job)
+                    session.commit()
+                    stats.synced += 1
+                except Exception as exc:
+                    session.rollback()
+                    number = build.get("number")
+                    if number is not None:
+                        task = session.scalar(
+                            select(SrpmScanTask).where(
+                                SrpmScanTask.jenkins_job_full_name == job,
+                                SrpmScanTask.jenkins_build_number == int(number),
+                            )
+                        )
+                        if task is None:
+                            task = SrpmScanTask(
+                                jenkins_job_full_name=job,
+                                jenkins_build_number=int(number),
+                                lifecycle_state="DISCOVERED",
+                                scan_result="NOT_AVAILABLE",
+                                gate_result="NOT_EVALUATED",
+                            )
+                            session.add(task)
+                        task.sync_status = "ERROR"
+                        task.sync_error = str(exc)[:4000]
+                        task.last_synced_at = datetime.now(timezone.utc)
+                        session.commit()
+                    stats.failed += 1
     finally:
         client.close()
     return stats

@@ -6,11 +6,10 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from ..db import get_db
-from ..models import ScanTask
-from ..services.task_service import get_task, list_task_page, task_payload
+from ..modules.srpm.services.task_service import get_task, list_task_page, task_payload
 
 
-router = APIRouter(prefix="/api/v1/tasks", tags=["tasks"])
+router = APIRouter(tags=["tasks"])
 
 
 @router.get("")

@@ -3,7 +3,10 @@ import tarfile
 
 import pytest
 
-from scanservice.archive import list_visible_members, read_visible_member
+from scanservice.modules.srpm.csmock.archive import (
+    list_visible_members,
+    read_visible_member,
+)
 
 
 def _archive() -> bytes:

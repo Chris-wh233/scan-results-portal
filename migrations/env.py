@@ -7,7 +7,7 @@ from sqlalchemy import engine_from_config, pool
 
 from scanservice.config import get_settings
 from scanservice.db import Base
-from scanservice import models  # noqa: F401
+from scanservice.modules.srpm import models  # noqa: F401
 
 config = context.config
 settings = get_settings()

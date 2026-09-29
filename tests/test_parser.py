@@ -1,6 +1,6 @@
 import json
 
-from scanservice.parser import (
+from scanservice.modules.srpm.parsers.csmock import (
     classify_artifact,
     parse_nvr_from_path,
     parse_sarif,

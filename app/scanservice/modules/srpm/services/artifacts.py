@@ -6,20 +6,20 @@ import tarfile
 from fastapi import HTTPException
 from fastapi.responses import HTMLResponse, Response
 
-from ..archive import list_visible_members, read_visible_member
-from ..config import get_settings
-from ..jenkins import JenkinsClient
-from ..models import ScanArtifact, ScanTask
+from ..csmock.archive import list_visible_members, read_visible_member
+from ....config import get_settings
+from ....jenkins import JenkinsClient
+from ..models import SrpmScanArtifact, SrpmScanTask
 
 
-def get_artifact_row(task: ScanTask, artifact_id: int) -> ScanArtifact:
+def get_artifact_row(task: SrpmScanTask, artifact_id: int) -> SrpmScanArtifact:
     row = next((item for item in task.artifacts if item.id == artifact_id), None)
     if row is None:
         raise HTTPException(status_code=404, detail="artifact not found")
     return row
 
 
-def read_artifact_content(task: ScanTask, row: ScanArtifact) -> bytes:
+def read_artifact_content(task: SrpmScanTask, row: SrpmScanArtifact) -> bytes:
     source_path = row.relative_path
     member_path = None
     if "::" in source_path:
@@ -65,7 +65,7 @@ def read_artifact_content(task: ScanTask, row: ScanArtifact) -> bytes:
         raise HTTPException(status_code=404, detail="archive member not found") from exc
 
 
-def artifact_response(task: ScanTask, row: ScanArtifact, *, download: bool) -> Response:
+def artifact_response(task: SrpmScanTask, row: SrpmScanArtifact, *, download: bool) -> Response:
     filename = (row.name or "artifact").replace('"', "'")
     if not download and row.artifact_type == "ARCHIVE":
         return HTMLResponse(
@@ -85,7 +85,7 @@ def artifact_response(task: ScanTask, row: ScanArtifact, *, download: bool) -> R
     )
 
 
-def archive_member_response(task: ScanTask, archive_ref: str) -> Response:
+def archive_member_response(task: SrpmScanTask, archive_ref: str) -> Response:
     archive_path, separator, member_path = archive_ref.partition("::")
     if not separator or not archive_path or not member_path:
         raise HTTPException(status_code=404, detail="invalid archive member")

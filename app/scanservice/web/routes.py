@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..db import get_db
-from ..services.task_service import (
+from ..modules.srpm.services.task_service import (
     detail_values,
     format_timestamp,
     get_task,
@@ -24,7 +24,7 @@ templates.env.filters["scan_method"] = scan_method
 router = APIRouter(tags=["web"])
 
 
-@router.get("/tasks", response_class=HTMLResponse)
+@router.get("/srpm", response_class=HTMLResponse)
 def tasks_page(
     request: Request,
     search: str | None = None,
@@ -49,7 +49,7 @@ def tasks_page(
     )
 
 
-@router.get("/tasks/{task_id}", response_class=HTMLResponse)
+@router.get("/srpm/{task_id}", response_class=HTMLResponse)
 def task_page(
     request: Request, task_id: int, db: Session = Depends(get_db)
 ) -> HTMLResponse:

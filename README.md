@@ -152,6 +152,9 @@ Jenkins Pipeline 主动发送事件时，事件中的 jenkins_job_full_name 必�
 
 ## API
 
+Jenkins 侧的对接约定（事件字段、产物归档要求、状态判定、常见问题）见
+[docs/jenkins-integration.md](docs/jenkins-integration.md)。
+
 SRPM 与 RPM 的接口形式基本一致，只是前缀不同。
 
 任务列表与详情：

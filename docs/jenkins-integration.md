@@ -1,12 +1,61 @@
 # Jenkins 接入约定
 
-源码包 Pipeline 使用 `POST /api/v1/srpm/events` 发送扫描事件。请求头为：
+本文档描述 Jenkins Pipeline 与 Scan Results Portal（下称门户）之间的对接
+约定，SRPM 与 RPM 两种扫描都适用。
+
+## 一、前置条件
+
+门户不向 Jenkins 推送任何数据，Pipeline 需要做两件事：
+
+1. **发事件**：扫描开始/结束/失败时调用门户的事件接口；
+2. **归档产物**：用 `archiveArtifacts` 把扫描结果归档到本构建；门户随后
+   自己通过 Jenkins API 把产物读回去解析。
+
+因此需要满足：
+
+- Jenkins 侧存在凭据 `scan-service-ingest-token`（Secret text），值与门户的
+  `SCAN_SERVICE_INGEST_TOKEN` 一致；
+- 门户侧配置了 `JENKINS_BASE_URL`、`JENKINS_USER`、`JENKINS_TOKEN`
+  （只读权限即可），且门户可以访问 Jenkins 的 API 与 artifact；
+- Pipeline 所在的 agent 能访问门户：地址由 agent 容器的环境变量
+  `SCAN_RESULTS_PORTAL_URL` 提供（栈内为 `http://scan-results-portal:8080`），
+  **不要写死在 Pipeline 里**；
+- 产物必须通过 `archiveArtifacts` 归档到本构建，门户只读取 Build 的
+  artifacts。
+
+## 二、认证
+
+事件接口使用 Bearer Token：
 
 ```text
 Authorization: Bearer <SCAN_SERVICE_INGEST_TOKEN>
 ```
 
-事件必须携带本次构建的完整 Job 名称和 Build Number。Label 使用完整的 SRPM 文件名，这样在扫描阶段失败或结果包缺失时，页面仍可以显示包名。
+Pipeline 里用 `credentials('scan-service-ingest-token')` 取值。
+
+## 三、事件接口
+
+| 扫描类型 | 接口 |
+| --- | --- |
+| SRPM | `POST /api/v1/srpm/events` |
+| RPM | `POST /api/v1/rpm/events` |
+
+事件有 `started` / `completed` / `failed` 三种。任务由
+`jenkins_job_full_name + jenkins_build_number`（RPM 还包含 `scan_key`）唯一
+确定；新 Pipeline 不需要预先创建任务或解析任务 ID，同一构建重复发送
+`started` 也不会重复建任务。
+
+### 3.1 SRPM 事件字段
+
+| 字段 | 必填 | 说明 |
+| --- | --- | --- |
+| `event` | 是 | `started` / `completed` / `failed` |
+| `jenkins_job_full_name` | 是 | 完整 Job 名，支持 `packages/curl` 这类 folder 路径 |
+| `jenkins_build_number` | 是 | 构建号 |
+| `srpm_name` | 否 | 完整 SRPM 文件名，建议发送；页面的 Label 用它，扫描失败或结果包缺失时页面仍能显示包名 |
+| `created_at` | started 用 | ISO-8601 扫描开始时间 |
+| `finished_at` | completed/failed 用 | ISO-8601 扫描结束时间 |
+| `csmock_exit_code` | 否 | csmock 退出码 |
 
 开始扫描：
 
@@ -27,12 +76,57 @@ Authorization: Bearer <SCAN_SERVICE_INGEST_TOKEN>
   "event": "failed",
   "jenkins_job_full_name": "packages/curl",
   "jenkins_build_number": 15,
+  "srpm_name": "curl-8.4.0-9.ocs23.src.rpm",
   "finished_at": "2026-09-24T10:02:00+08:00",
   "csmock_exit_code": 2
 }
 ```
 
-扫描正常结束并完成归档后发送 `completed` 事件。该事件不直接代表扫描成功，Scan Results Portal 会从这个 Job 的 Jenkins Build 读取产物，确认 `.tar.xz` 可以解压，并且包含以下预期文件：
+### 3.2 RPM 事件字段
+
+| 字段 | 必填 | 说明 |
+| --- | --- | --- |
+| `event` | 是 | `started` / `completed` / `failed` |
+| `scan_key` | 是 | 本次扫描的标识，直接使用 RPM 的 sha256；门户按它定位归档目录 |
+| `jenkins_job_full_name` | 是 | 完整 Job 名 |
+| `jenkins_build_number` | 是 | 构建号 |
+| `rpm_name` | 是 | RPM 文件名 |
+| `rpm_sha256` | 是 | RPM 的 sha256（64 位十六进制） |
+| `created_at` | started 用 | ISO-8601 扫描开始时间 |
+| `finished_at` | completed/failed 用 | ISO-8601 扫描结束时间 |
+| `scanner_exit_code` | 否 | cve-bin-tool 退出码 |
+
+开始扫描：
+
+```json
+{
+  "event": "started",
+  "scan_key": "<RPM 的 sha256>",
+  "jenkins_job_full_name": "rpm-docker-test",
+  "jenkins_build_number": 1,
+  "rpm_name": "docker-24.0.9-8.lns23.loongarch64.rpm",
+  "rpm_sha256": "<RPM 的 sha256>",
+  "created_at": "2026-09-24T10:00:00+08:00"
+}
+```
+
+### 3.3 事件时序
+
+- 扫描阶段开始前发 `started`（门户据此建任务，状态 `RUNNING`）；
+- 扫描正常结束、且已完成归档后发 `completed`；
+- 扫描阶段失败发 `failed`，不要发 `completed`。
+
+## 四、产物归档要求
+
+`completed` 只表示扫描与归档阶段已经结束，不代表扫描成功；门户会重新读取
+Build 的 artifacts 并自行校验。
+
+### 4.1 SRPM
+
+门户会在该构建的所有 artifacts 中挑选第一个满足条件的 `.tar.xz` 作为扫描
+结果，条件是：
+
+- 归档内**必须包含**以下 6 个文件：
 
 ```text
 scan.ini
@@ -43,10 +137,73 @@ scan-results.html
 scan.log
 ```
 
-验证成功时状态为 `FINISHED`；压缩包缺失、损坏、无法解压或缺少预期文件时状态为 `NOT_AVAILABLE`。csmock 阶段本身失败时状态为 `FAILED`。
+- 结构：这些文件要么位于归档根目录，要么位于 `<NVR>/` 下一层；
+  `<NVR>/debug/` 下的内容会被忽略；
+- 归档必须能正常解压，且单个归档不超过 512 MiB；
+- 门户还要求 `scan.ini` 可解析、`scan-results-summary.txt` 存在；
+- 可选：额外归档 `.sarif` 文件，门户会据此解析 finding 明细；
+- 可选：归档 `scan-manifest.json` 作为任务元数据（扁平结构，非嵌套）。
+  门户会读取其中的 `package_name`、`version`、`release`、`nvr`、
+  `srpm_name`、`architecture`、`source_revision`、`source_url`、
+  `source_sha256`、`scanner`、`scanner_version`、`mock_config`、
+  `csmock_exit_code`、`gate_result`、`plugins`（或 `enabled_plugins`）。
+  解析失败会被静默忽略，不影响状态判定。
 
-推荐额外归档 `scan-manifest.json`，其 `scan_type` 应为 `srpm`，并包含 Job 名称、Build Number、SRPM 文件名、扫描时间和 csmock 退出码。
+### 4.2 RPM
 
-多个包 Job 可以共用同一套 Pipeline 模板。SRP 通过 `config/config.yaml` 的 `jenkins.jobs` 或 `jenkins.discovery.folders` 接入这些 Job；页面按扫描时间统一显示，不按 Job 分组。
+门户只读取位于 `rpm-scan-artifacts/<scan_key>/` 前缀下的这些文件：
 
-新的 Pipeline 只使用 `/api/v1/srpm/events`，不需要先创建任务或解析任务 ID。
+```text
+scan-manifest.json
+scan-results.json
+scan-results.csv
+scan-results.html
+scan.log
+```
+
+其中 `scan-manifest.json` 与 `scan-results.json` 是必需的；manifest 中的
+`rpm.sha256` 必须与事件里的 `scan_key` / `rpm_sha256` 一致，且 `scanner.name`
+必须是 `cve-bin-tool`。单个解析文件不超过 16 MiB。
+
+## 五、状态判定
+
+两种扫描共用四种状态，但判定条件不同：
+
+| 状态 | SRPM | RPM |
+| --- | --- | --- |
+| `RUNNING` | 已收到 `started`，尚未结束 | 同左 |
+| `FINISHED` | 收到 `completed` 且归档校验通过 | 收到 `completed` 且两个 json 校验通过，扫描器退出码为 0 或 1 |
+| `FAILED` | 收到 `failed`（csmock 阶段失败） | 两个 json 存在，但 `scanner_exit_code` 不为 0/1 |
+| `NOT_AVAILABLE` | 扫描已结束，但结果包缺失、损坏、无法解压或缺少预期文件 | 扫描已结束，但缺少有效的 manifest/json |
+
+RPM 的 `scanner_exit_code` 为 1 表示扫描成功且发现漏洞，只有大于 1 才是失败。
+
+## 六、只读与同步接口（可选）
+
+| 用途 | 接口 |
+| --- | --- |
+| 任务列表 / 详情 | `GET /api/v1/{srpm\|rpm}/tasks`、`GET /api/v1/{srpm\|rpm}/tasks/{id}` |
+| 手动触发同步 | `POST /api/v1/{srpm\|rpm}/sync` |
+
+Pipeline 不需要调用这些接口，它们主要服务于页面上的手动刷新与运维排查。
+
+## 七、多包、多 Job 接入
+
+多个包的 Job 可以共用同一套 Pipeline 模板。事件接口不要求 Job 预先登记，
+只要事件里的 `jenkins_job_full_name` 是完整 Job 名即可；页面按扫描时间统一
+显示，不按 Job 分组。
+
+如果需要门户主动同步（手动刷新）这些 Job，把它们写入
+`config/config.yaml` 的 `jenkins.jobs`，或通过 `jenkins.discovery.folders`
+自动发现；也可以用环境变量 `JENKINS_JOBS` / `JENKINS_DISCOVERY_FOLDERS`。
+这些配置只影响手动同步与主动发现，不影响事件接入。
+
+## 八、常见问题
+
+- 事件返回 401：Bearer Token 与门户的 `SCAN_SERVICE_INGEST_TOKEN` 不一致；
+- 事件返回 422：`event` 取值非法，或缺少必填字段；
+- 任务一直是 `RUNNING`：只发了 `started`，没有发 `completed`/`failed`；
+- 任务为 `NOT_AVAILABLE`：产物没有归档、归档损坏，或缺少预期文件；
+- 任务为 `FAILED`：扫描阶段本身失败（SRPM 收到 `failed`；RPM 退出码大于 1）；
+- 归档已上传但门户读不到：确认产物是通过 `archiveArtifacts` 归档到本构建，
+  且 RPM 的产物位于 `rpm-scan-artifacts/<scan_key>/` 前缀下。

@@ -183,9 +183,12 @@ RPM 的 `scanner_exit_code` 为 1 表示扫描成功且发现漏洞，只有大�
 | 用途 | 接口 |
 | --- | --- |
 | 任务列表 / 详情 | `GET /api/v1/{srpm\|rpm}/tasks`、`GET /api/v1/{srpm\|rpm}/tasks/{id}` |
-| 手动触发同步 | `POST /api/v1/{srpm\|rpm}/sync` |
+| 手动触发同步（页面刷新） | `POST /api/v1/{srpm\|rpm}/sync` |
 
 Pipeline 不需要调用这些接口，它们主要服务于页面上的手动刷新与运维排查。
+`sync` 的行为：重新读取门户中已登记且尚未进入终态（`RUNNING` /
+`NOT_AVAILABLE`）的任务，逐个回 Jenkins 重新同步，最多处理
+`RECENT_BUILD_LIMIT` 个；不会导入没有登记过的构建。
 
 ## 七、多包、多 Job 接入
 
@@ -193,10 +196,7 @@ Pipeline 不需要调用这些接口，它们主要服务于页面上的手动�
 只要事件里的 `jenkins_job_full_name` 是完整 Job 名即可；页面按扫描时间统一
 显示，不按 Job 分组。
 
-如果需要门户主动同步（手动刷新）这些 Job，把它们写入
-`config/config.yaml` 的 `jenkins.jobs`，或通过 `jenkins.discovery.folders`
-自动发现；也可以用环境变量 `JENKINS_JOBS` / `JENKINS_DISCOVERY_FOLDERS`。
-这些配置只影响手动同步与主动发现，不影响事件接入。
+门户不维护 Job 白名单：任务只通过事件或已登记任务的重新同步产生。
 
 ## 八、常见问题
 

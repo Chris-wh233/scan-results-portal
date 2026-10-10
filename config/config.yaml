@@ -1,10 +1,5 @@
 jenkins:
   base_url: ""
-  jobs: []
-  discovery:
-    folders: []
-    recursive: true
-    extra_jobs: []
 
 sync:
   recent_build_limit: 20

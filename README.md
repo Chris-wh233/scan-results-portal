@@ -127,28 +127,15 @@ URL 编码。
 config/config.yaml
 ~~~
 
-可以配置需要主动同步的 Jenkins Job：
+## 刷新行为
 
-~~~yaml
-jenkins:
-  jobs:
-    - packages/curl
-    - packages/openssl
-  discovery:
-    folders:
-      - packages
-    recursive: true
-~~~
+SRPM 与 RPM 两个页面的刷新按钮语义一致：重新读取门户中**已登记且尚未进入
+终态**（`RUNNING` / `NOT_AVAILABLE`）的任务，逐个回 Jenkins 重新同步，最多
+处理 `RECENT_BUILD_LIMIT`（默认 20）个。已 `FINISHED` / `FAILED` 的任务不会
+被改动，也不会从 Jenkins 导入没有登记过的构建。
 
-也可以使用环境变量：
-
-~~~text
-JENKINS_JOBS=packages/curl,packages/openssl
-JENKINS_DISCOVERY_FOLDERS=packages
-JENKINS_DISCOVERY_RECURSIVE=true
-~~~
-
-Jenkins Pipeline 主动发送事件时，事件中的 jenkins_job_full_name 必须使用完整 Job 名称。任务事件路径不要求该 Job 预先写入配置；Job 配置主要用于手动刷新和主动同步 Jenkins 构建。
+事件接口不要求 Job 预先登记：只要事件里的 `jenkins_job_full_name` 是完整
+Job 名即可（支持 `packages/curl` 这类 folder 路径）。
 
 ## API
 

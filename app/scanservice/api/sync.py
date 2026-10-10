@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..db import get_db
-from ..modules.srpm.services.synchronization import sync_once
+from ..modules.srpm.services.synchronization import sync_registered_tasks
 
 
 router = APIRouter(tags=["sync"])
@@ -16,6 +16,6 @@ router = APIRouter(tags=["sync"])
 @router.post("/sync")
 def sync_tasks(db: Session = Depends(get_db)) -> dict[str, Any]:
     try:
-        return sync_once(get_settings(), db).as_dict()
+        return sync_registered_tasks(get_settings(), db)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc

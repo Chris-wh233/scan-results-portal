@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import datetime, timezone
 import configparser
 import json
@@ -17,6 +16,7 @@ from ..csmock.archive import (
 )
 from ....config import Settings
 from ....jenkins import JenkinsClient
+from ....resync import resync_registered_tasks
 from ..models import SrpmScanTask
 from ..parsers.csmock import (
     parse_sarif,
@@ -29,6 +29,7 @@ from ..domain.state import (
     SRPM_FAILED,
     SRPM_FINISHED,
     SRPM_NOT_AVAILABLE,
+    SRPM_RUNNING,
     result_after_unavailable_archive,
     result_after_valid_archive,
 )
@@ -49,20 +50,6 @@ from .sync_results import (
 )
 
 MAX_PARSE_BYTES = 8 * 1024 * 1024
-
-
-@dataclass
-class SyncStats:
-    discovered: int = 0
-    synced: int = 0
-    failed: int = 0
-
-    def as_dict(self) -> dict[str, int]:
-        return {
-            "discovered": self.discovered,
-            "synced": self.synced,
-            "failed": self.failed,
-        }
 
 
 def _jenkins_time(milliseconds: Any) -> datetime | None:
@@ -287,61 +274,29 @@ def sync_build(
     return _sync_build(session, client, settings, build, job=job_full_name)
 
 
-def sync_once(settings: Settings, session: Session) -> SyncStats:
-    stats = SyncStats()
-    client = JenkinsClient(
-        settings.jenkins_base_url,
-        settings.jenkins_user,
-        settings.jenkins_token,
-        settings.request_timeout_seconds,
+def _resync_task(
+    session: Session,
+    client: JenkinsClient,
+    settings: Settings,
+    task: SrpmScanTask,
+) -> SrpmScanTask:
+    build = client.get_build(task.jenkins_job_full_name, task.jenkins_build_number)
+    return _sync_build(
+        session,
+        client,
+        settings,
+        build,
+        job=task.jenkins_job_full_name,
     )
-    try:
-        jobs = list(settings.configured_jobs)
-        if settings.discovery_folders:
-            jobs.extend(
-                client.discover_jobs(
-                    settings.discovery_folders,
-                    recursive=settings.discovery_recursive,
-                )
-            )
-        jobs = list(dict.fromkeys(job for job in jobs if job))
 
-        for job in jobs:
-            try:
-                builds = client.list_builds(job, settings.recent_build_limit)
-            except Exception:
-                stats.failed += 1
-                continue
-            for build in builds:
-                stats.discovered += 1
-                try:
-                    _sync_build(session, client, settings, build, job=job)
-                    session.commit()
-                    stats.synced += 1
-                except Exception as exc:
-                    session.rollback()
-                    number = build.get("number")
-                    if number is not None:
-                        task = session.scalar(
-                            select(SrpmScanTask).where(
-                                SrpmScanTask.jenkins_job_full_name == job,
-                                SrpmScanTask.jenkins_build_number == int(number),
-                            )
-                        )
-                        if task is None:
-                            task = SrpmScanTask(
-                                jenkins_job_full_name=job,
-                                jenkins_build_number=int(number),
-                                lifecycle_state="DISCOVERED",
-                                scan_result="NOT_AVAILABLE",
-                                gate_result="NOT_EVALUATED",
-                            )
-                            session.add(task)
-                        task.sync_status = "ERROR"
-                        task.sync_error = str(exc)[:4000]
-                        task.last_synced_at = datetime.now(timezone.utc)
-                        session.commit()
-                    stats.failed += 1
-    finally:
-        client.close()
-    return stats
+
+def sync_registered_tasks(settings: Settings, session: Session) -> dict[str, int]:
+    """Re-sync registered SRPM tasks that have not reached a terminal state."""
+    return resync_registered_tasks(
+        settings,
+        session,
+        model=SrpmScanTask,
+        state_column=SrpmScanTask.scan_result,
+        active_states=(SRPM_RUNNING, SRPM_NOT_AVAILABLE),
+        sync_one=_resync_task,
+    )

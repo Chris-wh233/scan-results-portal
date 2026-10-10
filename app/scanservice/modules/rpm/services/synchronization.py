@@ -3,11 +3,12 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
 from ....config import Settings
 from ....jenkins import JenkinsClient
+from ....resync import resync_registered_tasks
 from ..domain.state import RPM_FAILED, RPM_FINISHED, RPM_NOT_AVAILABLE, RPM_RUNNING
 from ..models import (
     RpmScanArtifact,
@@ -194,35 +195,22 @@ def sync_task(
     return task
 
 
+def _resync_task(
+    db: Session,
+    client: JenkinsClient,
+    settings: Settings,
+    task: RpmScanTask,
+) -> RpmScanTask:
+    return sync_task(db, client, task)
+
+
 def sync_registered_tasks(settings: Settings, db: Session) -> dict[str, int]:
-    tasks = db.scalars(
-        select(RpmScanTask)
-        .where(RpmScanTask.state.in_((RPM_RUNNING, RPM_NOT_AVAILABLE)))
-        .order_by(RpmScanTask.id.desc())
-        .limit(settings.recent_build_limit)
-    ).all()
-    client = JenkinsClient(
-        settings.jenkins_base_url,
-        settings.jenkins_user,
-        settings.jenkins_token,
-        settings.request_timeout_seconds,
+    """Re-sync registered RPM tasks that have not reached a terminal state."""
+    return resync_registered_tasks(
+        settings,
+        db,
+        model=RpmScanTask,
+        state_column=RpmScanTask.state,
+        active_states=(RPM_RUNNING, RPM_NOT_AVAILABLE),
+        sync_one=_resync_task,
     )
-    synced = failed = 0
-    try:
-        for task in tasks:
-            try:
-                sync_task(db, client, task)
-                db.commit()
-                synced += 1
-            except Exception as exc:
-                db.rollback()
-                current = db.get(RpmScanTask, task.id)
-                if current is not None:
-                    current.sync_status = "ERROR"
-                    current.sync_error = str(exc)[:4000]
-                    current.last_synced_at = datetime.now(timezone.utc)
-                    db.commit()
-                failed += 1
-    finally:
-        client.close()
-    return {"synced": synced, "failed": failed}

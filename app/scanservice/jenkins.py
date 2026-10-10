@@ -47,53 +47,6 @@ class JenkinsClient:
         except ValueError as exc:
             raise JenkinsError(f"Jenkins returned non-JSON data for {path}") from exc
 
-    def list_builds(self, job_name: str, limit: int) -> list[dict[str, Any]]:
-        data = self._get_json(
-            f"{self._job_path(job_name)}/api/json",
-            {
-                "tree": "builds[number,url,result,building,timestamp,duration]",
-            },
-        )
-        builds = data.get("builds") or []
-        return builds[:limit]
-
-    def list_jobs(self, parent_job: str = "") -> list[dict[str, Any]]:
-        """Return direct children of the Jenkins root or a folder."""
-        prefix = f"{self._job_path(parent_job)}/" if parent_job else ""
-        data = self._get_json(
-            f"{prefix}api/json",
-            {"tree": "jobs[name,url,_class]"},
-        )
-        return data.get("jobs") or []
-
-    def discover_jobs(
-        self, folders: tuple[str, ...], *, recursive: bool = True
-    ) -> list[str]:
-        """Discover buildable jobs below configured Jenkins folders."""
-        discovered: list[str] = []
-        visited: set[str] = set()
-
-        def visit(folder: str) -> None:
-            folder = folder.strip("/")
-            if folder in visited:
-                return
-            visited.add(folder)
-            for item in self.list_jobs(folder):
-                name = str(item.get("name") or "").strip()
-                if not name:
-                    continue
-                full_name = f"{folder}/{name}" if folder else name
-                item_class = str(item.get("_class") or "")
-                is_folder = "Folder" in item_class
-                if is_folder and recursive:
-                    visit(full_name)
-                elif not is_folder:
-                    discovered.append(full_name)
-
-        for folder in folders:
-            visit(folder)
-        return list(dict.fromkeys(discovered))
-
     def get_build(self, job_name: str, number: int) -> dict[str, Any]:
         return self._get_json(
             f"{self._job_path(job_name)}/{number}/api/json",

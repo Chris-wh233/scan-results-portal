@@ -1,0 +1,51 @@
+from __future__ import annotations
+
+import mimetypes
+
+from fastapi import HTTPException
+from fastapi.responses import Response
+
+from ....config import get_settings
+from ....jenkins import JenkinsClient
+from ..models import RpmScanArtifact, RpmScanTask
+
+
+def get_artifact(task: RpmScanTask, artifact_id: int) -> RpmScanArtifact:
+    artifact = next((row for row in task.artifacts if row.id == artifact_id), None)
+    if artifact is None:
+        raise HTTPException(status_code=404, detail="RPM scan artifact not found")
+    return artifact
+
+
+def artifact_response(
+    task: RpmScanTask,
+    artifact: RpmScanArtifact,
+    *,
+    download: bool,
+) -> Response:
+    settings = get_settings()
+    client = JenkinsClient(
+        settings.jenkins_base_url,
+        settings.jenkins_user,
+        settings.jenkins_token,
+        settings.request_timeout_seconds,
+    )
+    try:
+        content = client.get_artifact(
+            task.jenkins_job_full_name,
+            task.jenkins_build_number,
+            artifact.relative_path,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"unable to read artifact: {exc}") from exc
+    finally:
+        client.close()
+
+    media_type = mimetypes.guess_type(artifact.name)[0] or "application/octet-stream"
+    disposition = "attachment" if download else "inline"
+    headers = {
+        "Content-Disposition": f'{disposition}; filename="{artifact.name.replace(chr(34), chr(39))}"'
+    }
+    if not download and artifact.artifact_type == "REPORT_HTML":
+        headers["Content-Security-Policy"] = "sandbox; default-src 'self' 'unsafe-inline' data:"
+    return Response(content=content, media_type=media_type, headers=headers)

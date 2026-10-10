@@ -42,7 +42,6 @@ class SrpmScanTask(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     jenkins_job_full_name: Mapped[str] = mapped_column(String(500), nullable=False)
     jenkins_build_number: Mapped[int] = mapped_column(Integer, nullable=False)
-    jenkins_build_url: Mapped[str | None] = mapped_column(Text)
 
     package_name: Mapped[str | None] = mapped_column(String(200))
     version: Mapped[str | None] = mapped_column(String(200))

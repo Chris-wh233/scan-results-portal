@@ -1,0 +1,91 @@
+from __future__ import annotations
+
+from typing import Any
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
+from sqlalchemy.orm import Session
+
+from ....config import get_settings
+from ....db import get_db
+from ....security import require_ingest_token
+from ..schemas.events import RpmEventRequest
+from ..services.artifacts import artifact_response, get_artifact
+from ..services.events import complete_task, fail_task, find_task, register_start
+from ..services.synchronization import sync_registered_tasks
+from ..services.task_service import get_task, list_task_page, task_payload
+
+
+router = APIRouter(prefix="/api/v1/rpm", tags=["rpm"])
+
+
+@router.post("/events")
+def receive_event(
+    payload: RpmEventRequest,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_ingest_token),
+) -> dict[str, Any]:
+    values = payload.dict(exclude_unset=True)
+    task = find_task(db, values)
+    if payload.event == "started":
+        task = register_start(db, values)
+        db.commit()
+    else:
+        if task is None:
+            task = register_start(db, values)
+            db.commit()
+        if payload.event == "completed":
+            task = complete_task(db, get_settings(), task, values)
+        elif payload.event == "failed":
+            task = fail_task(db, task, values)
+            db.commit()
+        else:
+            raise HTTPException(status_code=422, detail="unsupported RPM event")
+    return task_payload(task)
+
+
+@router.get("/tasks")
+def list_tasks(
+    search: str | None = None,
+    state: str | None = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    total, tasks = list_task_page(db, search, state, page, page_size)
+    return {
+        "page": page,
+        "page_size": page_size,
+        "total": total,
+        "items": [task_payload(task) for task in tasks],
+    }
+
+
+@router.get("/tasks/{task_id}")
+def task_detail(task_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
+    return task_payload(get_task(db, task_id))
+
+
+@router.post("/sync")
+def sync_tasks(db: Session = Depends(get_db)) -> dict[str, int]:
+    return sync_registered_tasks(get_settings(), db)
+
+
+@router.get("/tasks/{task_id}/artifacts/{artifact_id}/view")
+def view_artifact(
+    task_id: int,
+    artifact_id: int,
+    db: Session = Depends(get_db),
+) -> Response:
+    task = get_task(db, task_id)
+    return artifact_response(task, get_artifact(task, artifact_id), download=False)
+
+
+@router.get("/tasks/{task_id}/artifacts/{artifact_id}/download")
+def download_artifact(
+    task_id: int,
+    artifact_id: int,
+    db: Session = Depends(get_db),
+) -> Response:
+    task = get_task(db, task_id)
+    return artifact_response(task, get_artifact(task, artifact_id), download=True)

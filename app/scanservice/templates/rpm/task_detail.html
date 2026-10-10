@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+
+{% block content %}
+<p><a href="/rpm">← All RPM scans</a></p>
+<div class="page-heading">
+  <div>
+    <h1>RPM Scan Task #{{ task.id }}</h1>
+    <p class="muted">{{ task.rpm_name }}</p>
+  </div>
+  <span class="status status-{{ task.state|lower }}">{{ task.state }}</span>
+</div>
+
+<nav class="tabs">
+  <a href="#details">Details</a><a href="#results">Results</a><a href="#logs">Logs</a>
+</nav>
+
+<section id="details" class="card">
+  <h2>Details</h2>
+  <table class="details-table"><tbody>
+    <tr><th>ID</th><td>{{ task.id }}</td></tr>
+    <tr><th>Label</th><td>{{ task.rpm_name }}</td></tr>
+    <tr><th>Name</th><td>{{ task.name or "—" }}</td></tr>
+    <tr><th>Epoch</th><td>{{ task.epoch or "—" }}</td></tr>
+    <tr><th>Version</th><td>{{ task.version or "—" }}</td></tr>
+    <tr><th>Release</th><td>{{ task.release or "—" }}</td></tr>
+    <tr><th>Architecture</th><td>{{ task.architecture or "—" }}</td></tr>
+    <tr><th>Source RPM</th><td>{{ task.source_rpm or "—" }}</td></tr>
+    <tr><th>Method</th><td>{{ task.scanner or "cve-bin-tool" }}{% if task.scanner_version %} {{ task.scanner_version }}{% endif %}</td></tr>
+    <tr><th>Args</th><td>{{ task.scanner_args|join(" ") if task.scanner_args else "—" }}</td></tr>
+    <tr><th>State</th><td>{{ task.state }}</td></tr>
+    <tr><th>Triggered by</th><td>{{ task.triggered_by or "—" }}</td></tr>
+    <tr><th>Created</th><td>{{ task.created_at|timestamp }}</td></tr>
+    <tr><th>Finished</th><td>{{ task.finished_at|timestamp }}</td></tr>
+  </tbody></table>
+  {% if task.sync_error %}<p class="error">Sync error: {{ task.sync_error }}</p>{% endif %}
+</section>
+
+<section id="results" class="card">
+  <h2>Results</h2>
+  <p class="summary-number">{{ task.total_vulnerabilities if task.total_vulnerabilities is not none else "—" }} <small>unique CVEs</small></p>
+  <div class="severity-summary-wrap">
+    <table class="severity-summary">
+      <tbody>
+        <tr>
+          <th class="severity-critical">Critical</th>
+          <td>{{ task.critical_count }}</td>
+          <th class="severity-high">High</th>
+          <td>{{ task.high_count }}</td>
+          <th class="severity-medium">Medium</th>
+          <td>{{ task.medium_count }}</td>
+          <th class="severity-low">Low</th>
+          <td>{{ task.low_count }}</td>
+          <th class="severity-unknown">Unknown</th>
+          <td>{{ task.unknown_count }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <h3>Components</h3>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Vendor</th><th>Product</th><th>Version</th><th>CVEs</th></tr></thead>
+    <tbody>{% for row in task.components %}<tr><td>{{ row.vendor }}</td><td>{{ row.product }}</td><td>{{ row.version }}</td><td>{{ row.vulnerability_count }}</td></tr>{% else %}<tr><td colspan="4" class="empty">No component data.</td></tr>{% endfor %}</tbody>
+  </table></div>
+  <h3>Vulnerabilities</h3>
+  <div class="table-wrap"><table>
+    <thead><tr><th>CVE</th><th>Severity</th><th>Score</th><th>Component</th><th>Source</th><th>Evidence</th></tr></thead>
+    <tbody>{% for row in task.vulnerabilities %}<tr><td>{{ row.cve_number }}</td><td>{{ row.severity }}</td><td>{{ row.score if row.score is not none else "—" }}</td><td>{{ row.vendor }}.{{ row.product }} {{ row.version }}</td><td>{{ row.source or "—" }}</td><td><details><summary>View</summary>{% if row.description %}<p>{{ row.description }}</p>{% endif %}<p>{{ row.paths or "No path data" }}</p>{% if row.cvss_vector %}<p>{{ row.cvss_vector }}</p>{% endif %}</details></td></tr>{% else %}<tr><td colspan="6" class="empty">No vulnerabilities found.</td></tr>{% endfor %}</tbody>
+  </table></div>
+</section>
+
+<section id="logs" class="card">
+  <h2>Logs</h2>
+  <ul class="logs-list">
+  {% for row in task.artifacts %}
+    <li><a class="download-link" href="/api/v1/rpm/tasks/{{ task.id }}/artifacts/{{ row.id }}/download">[download]</a> <a href="/api/v1/rpm/tasks/{{ task.id }}/artifacts/{{ row.id }}/view">{{ row.name }}</a></li>
+  {% else %}<li class="empty">No logs or artifacts indexed.</li>{% endfor %}
+  </ul>
+</section>
+{% endblock %}

@@ -28,7 +28,6 @@ def task_payload(task: SrpmScanTask) -> dict[str, Any]:
         "id": task.id,
         "jenkins_job_full_name": task.jenkins_job_full_name,
         "jenkins_build_number": task.jenkins_build_number,
-        "jenkins_build_url": task.jenkins_build_url,
         "package_name": task.package_name,
         "version": task.version,
         "release": task.release,

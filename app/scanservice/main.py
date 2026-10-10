@@ -9,6 +9,8 @@ from .api.srpm_events import router as srpm_events_router
 from .api.sync import router as sync_router
 from .api.tasks import router as tasks_router
 from .config import get_settings
+from .modules.rpm.api.routes import router as rpm_api_router
+from .modules.rpm.web.routes import router as rpm_web_router
 from .web.routes import router as web_router
 
 
@@ -21,4 +23,6 @@ app.include_router(srpm_events_router)
 app.include_router(tasks_router, prefix="/api/v1/srpm/tasks")
 app.include_router(artifacts_router, prefix="/api/v1/srpm/tasks")
 app.include_router(sync_router, prefix="/api/v1/srpm")
+app.include_router(rpm_api_router)
 app.include_router(web_router)
+app.include_router(rpm_web_router)

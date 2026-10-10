@@ -11,6 +11,7 @@ a { color: #1455a0; }
 .site-header { background: #202b3c; color: white; padding: 14px 0; }
 .site-header .container { display: flex; gap: 24px; align-items: center; }
 .site-header a { color: white; text-decoration: none; }
+.scan-nav-link-rpm { border-left: 1px solid rgba(255, 255, 255, .85); padding-left: 24px; }
 .brand { font-weight: 700; margin-right: auto; }
 .page-heading { display: flex; justify-content: space-between; align-items: center; gap: 20px; margin: 28px 0 18px; }
 h1 { margin: 0 0 4px; }
@@ -20,11 +21,43 @@ h3 { margin-top: 26px; }
 button, input, select { font: inherit; padding: 8px 10px; border: 1px solid #c5cad3; border-radius: 4px; background: white; }
 button { cursor: pointer; background: #1455a0; color: white; border-color: #1455a0; }
 button:disabled { opacity: .6; cursor: wait; }
+.refresh-button {
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+}
+.refresh-button svg {
+  width: 25px;
+  height: 25px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
 .filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
 .table-wrap { overflow-x: auto; background: white; border: 1px solid #e0e3e8; border-radius: 6px; }
 table { border-collapse: collapse; width: 100%; }
 th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #eceef2; vertical-align: top; }
 th { background: #f0f2f5; white-space: nowrap; }
+.severity-summary-wrap { overflow-x: auto; }
+.severity-summary { min-width: 760px; table-layout: fixed; }
+.severity-summary th, .severity-summary td {
+  text-align: center;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.severity-summary th { color: #fff; font-weight: 700; }
+.severity-summary td { background: #fff; font-weight: 700; }
+.severity-summary .severity-critical { background: #d64545; }
+.severity-summary .severity-high { background: #3578c4; }
+.severity-summary .severity-medium { background: #e3ad2f; color: #3b2b00; }
+.severity-summary .severity-low { background: #4e9f68; }
+.severity-summary .severity-unknown { background: #7b8794; }
 .tasks-table th:not(:last-child), .tasks-table td:not(:last-child) {
   border-right: 1px solid #d9dde5;
 }

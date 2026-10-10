@@ -10,7 +10,6 @@ class SrpmEventRequest(BaseModel):
     event: Literal["started", "completed", "failed"]
     jenkins_build_number: int = Field(..., gt=0)
     jenkins_job_full_name: str
-    jenkins_build_url: str | None = None
     srpm_name: str | None = None
     created_at: datetime | None = None
     finished_at: datetime | None = None

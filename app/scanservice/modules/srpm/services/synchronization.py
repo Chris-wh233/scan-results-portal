@@ -111,7 +111,6 @@ def _sync_build(
 
     detail = client.get_build(job, number)
     building = bool(detail.get("building"))
-    task.jenkins_build_url = detail.get("url") or build.get("url")
     task.lifecycle_state = "RUNNING" if building else "COMPLETED"
     task.execution_result = detail.get("result") or build.get("result")
     if task.created_at is None:

@@ -24,13 +24,6 @@
       <tr><th>Label</th><td>{{ details.srpm_name or "—" }}</td></tr>
       <tr><th>Method</th><td>{{ details.method or "—" }}</td></tr>
       <tr><th>Args</th><td>{% for arg in details.args %}{% if not loop.first %}<br>{% endif %}{% if arg.name %}<strong class="arg-name">{{ arg.name }}:</strong> {% endif %}<span class="arg-value">{{ arg.value }}</span>{% else %}—{% endfor %}</td></tr>
-      <tr><th>Jenkins Job</th><td>{{ task.jenkins_job_full_name }}</td></tr>
-      <tr><th>Jenkins Build</th>
-        <td>
-        {% if task.jenkins_build_url %}<a href="{{ task.jenkins_build_url }}">#{{ task.jenkins_build_number }}</a>
-        {% else %}#{{ task.jenkins_build_number }}{% endif %}
-        </td>
-      </tr>
       <tr><th>State</th><td>{{ task.scan_result }}</td></tr>
       <tr><th>Triggered by</th><td>{{ task.triggered_by or "—" }}</td></tr>
       <tr><th>Created</th><td>{{ task.created_at|timestamp }}</td></tr>

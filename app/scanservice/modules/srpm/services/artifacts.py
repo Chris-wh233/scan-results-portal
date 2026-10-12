@@ -9,6 +9,7 @@ from fastapi.responses import HTMLResponse, Response
 from ..csmock.archive import list_visible_members, read_visible_member
 from ....config import get_settings
 from ....jenkins import JenkinsClient
+from ....media import artifact_media_type
 from ..models import SrpmScanArtifact, SrpmScanTask
 
 
@@ -73,10 +74,11 @@ def artifact_response(task: SrpmScanTask, row: SrpmScanArtifact, *, download: bo
             "Use the <b>[download]</b> link to download it.</p>"
         )
     content = read_artifact_content(task, row)
-    if row.artifact_type in {"LOG", "METADATA", "SUMMARY", "REPORT_JSON"}:
-        media_type = "text/plain"
-    else:
-        media_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+    media_type = artifact_media_type(
+        artifact_type=row.artifact_type,
+        filename=filename,
+        download=download,
+    )
     disposition = "attachment" if download else "inline"
     return Response(
         content=content,

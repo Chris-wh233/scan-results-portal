@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import mimetypes
-
 from fastapi import HTTPException
 from fastapi.responses import Response
 
 from ....config import get_settings
 from ....jenkins import JenkinsClient
+from ....media import artifact_media_type
 from ..models import RpmScanArtifact, RpmScanTask
 
 
@@ -41,7 +40,11 @@ def artifact_response(
     finally:
         client.close()
 
-    media_type = mimetypes.guess_type(artifact.name)[0] or "application/octet-stream"
+    media_type = artifact_media_type(
+        artifact_type=artifact.artifact_type,
+        filename=artifact.name,
+        download=download,
+    )
     disposition = "attachment" if download else "inline"
     headers = {
         "Content-Disposition": f'{disposition}; filename="{artifact.name.replace(chr(34), chr(39))}"'

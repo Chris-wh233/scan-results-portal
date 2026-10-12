@@ -99,12 +99,11 @@ def complete_task(
         settings.request_timeout_seconds,
     )
     try:
-        build = client.get_build(task.jenkins_job_full_name, task.jenkins_build_number)
         sync_build(
             db,
             client,
             settings,
-            build,
+            task.jenkins_build_number,
             job_full_name=task.jenkins_job_full_name,
         )
         db.commit()

@@ -237,17 +237,19 @@ rpm_scan_vulnerability
 
 ## 代码结构
 
-SRPM 业务代码集中在：
+SRPM 与 RPM 的业务代码各自集中在一个模块目录中，两者结构对称：
 
 ~~~text
 app/scanservice/modules/srpm/
-~~~
-
-RPM 业务代码集中在：
-
-~~~text
 app/scanservice/modules/rpm/
 ~~~
+
+每个模块内部按 `api`（HTTP 端点）、`web`（页面）、`domain`、`models`、
+`parsers`、`schemas`、`services` 划分。跨扫描类型共用的部分放在
+`app/scanservice/` 顶层（`config`、`db`、`jenkins`、`media`、`resync`、
+`security`）以及 `api/health.py`。
+
+页面模板位于 `app/scanservice/templates/{srpm,rpm}/`，共用 `templates/base.html`。
 
 ## 测试
 
@@ -256,4 +258,13 @@ app/scanservice/modules/rpm/
 ~~~bash
 docker compose run --rm --no-deps scan-results-portal python3 -m pytest -q
 docker compose run --rm --no-deps scan-results-portal alembic current
+~~~
+
+测试文件会随镜像一起构建，因此新增或修改测试后需先
+`docker compose build scan-results-portal`；开发时也可以临时挂载本地目录：
+
+~~~bash
+docker compose run --rm --no-deps \
+  -v "$PWD/scan-results-portal/tests:/app/tests" \
+  scan-results-portal python3 -m pytest -q
 ~~~

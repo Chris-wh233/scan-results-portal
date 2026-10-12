@@ -71,11 +71,11 @@ def _sync_build(
     session: Session,
     client: JenkinsClient,
     settings: Settings,
-    build: dict[str, Any],
+    build_number: int,
     job: str | None = None,
 ) -> SrpmScanTask:
-    number = int(build["number"])
-    job = job or str(build.get("jenkins_job_full_name") or "")
+    number = int(build_number)
+    job = job or ""
     if not job:
         raise ValueError("Jenkins job is required to synchronize a build")
     task = session.scalar(
@@ -99,9 +99,9 @@ def _sync_build(
     detail = client.get_build(job, number)
     building = bool(detail.get("building"))
     task.lifecycle_state = "RUNNING" if building else "COMPLETED"
-    task.execution_result = detail.get("result") or build.get("result")
+    task.execution_result = detail.get("result")
     if task.created_at is None:
-        task.created_at = _jenkins_time(detail.get("timestamp") or build.get("timestamp"))
+        task.created_at = _jenkins_time(detail.get("timestamp"))
     if task.started_at is None:
         task.started_at = task.created_at
     task.triggered_by = _cause_user(detail)
@@ -267,11 +267,11 @@ def sync_build(
     session: Session,
     client: JenkinsClient,
     settings: Settings,
-    build: dict[str, Any],
+    build_number: int,
     job_full_name: str | None = None,
 ) -> SrpmScanTask:
     """Synchronize one SRPM build using its explicit Jenkins Job identity."""
-    return _sync_build(session, client, settings, build, job=job_full_name)
+    return _sync_build(session, client, settings, build_number, job=job_full_name)
 
 
 def _resync_task(
@@ -280,12 +280,11 @@ def _resync_task(
     settings: Settings,
     task: SrpmScanTask,
 ) -> SrpmScanTask:
-    build = client.get_build(task.jenkins_job_full_name, task.jenkins_build_number)
     return _sync_build(
         session,
         client,
         settings,
-        build,
+        task.jenkins_build_number,
         job=task.jenkins_job_full_name,
     )
 

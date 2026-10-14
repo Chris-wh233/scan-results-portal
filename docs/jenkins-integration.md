@@ -94,7 +94,7 @@ Pipeline 里用 `credentials('scan-service-ingest-token')` 取值。
 | `rpm_sha256` | 是 | RPM 的 sha256（64 位十六进制） |
 | `created_at` | started 用 | ISO-8601 扫描开始时间 |
 | `finished_at` | completed/failed 用 | ISO-8601 扫描结束时间 |
-| `scanner_exit_code` | 否 | cve-bin-tool 退出码 |
+| `cbt_exit_code` | 否 | cve-bin-tool 退出码 |
 
 开始扫描：
 
@@ -173,10 +173,10 @@ scan.log
 | --- | --- | --- |
 | `RUNNING` | 已收到 `started`，尚未结束 | 同左 |
 | `FINISHED` | 收到 `completed` 且归档校验通过 | 收到 `completed` 且两个 json 校验通过，扫描器退出码为 0 或 1 |
-| `FAILED` | 收到 `failed`（csmock 阶段失败） | 两个 json 存在，但 `scanner_exit_code` 不为 0/1 |
+| `FAILED` | 收到 `failed`（csmock 阶段失败） | 两个 json 存在，但 `cbt_exit_code` 不为 0/1 |
 | `NOT_AVAILABLE` | 扫描已结束，但结果包缺失、损坏、无法解压或缺少预期文件 | 扫描已结束，但缺少有效的 manifest/json |
 
-RPM 的 `scanner_exit_code` 为 1 表示扫描成功且发现漏洞，只有大于 1 才是失败。
+RPM 的 `cbt_exit_code` 为 1 表示扫描成功且发现漏洞，只有大于 1 才是失败。
 
 ## 六、只读与同步接口（可选）
 

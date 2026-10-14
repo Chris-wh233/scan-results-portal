@@ -50,7 +50,7 @@ def complete_task(
     values: dict[str, Any],
 ) -> RpmScanTask:
     task.finished_at = values.get("finished_at") or datetime.now(timezone.utc)
-    task.scanner_exit_code = values.get("scanner_exit_code")
+    task.cbt_exit_code = values.get("cbt_exit_code")
     task.sync_status = "PENDING"
     db.commit()
 
@@ -81,7 +81,7 @@ def complete_task(
 def fail_task(db: Session, task: RpmScanTask, values: dict[str, Any]) -> RpmScanTask:
     task.state = RPM_FAILED
     task.finished_at = values.get("finished_at") or datetime.now(timezone.utc)
-    task.scanner_exit_code = values.get("scanner_exit_code")
+    task.cbt_exit_code = values.get("cbt_exit_code")
     task.sync_status = "SYNCED"
     task.sync_error = None
     return task

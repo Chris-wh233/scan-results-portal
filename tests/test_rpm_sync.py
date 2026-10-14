@@ -76,7 +76,7 @@ def test_sync_task_finishes_when_results_are_valid(session):
     }
 
 
-def test_sync_task_treats_scanner_exit_code_one_as_finished(session):
+def test_sync_task_treats_cbt_exit_code_one_as_finished(session):
     # cve-bin-tool returns 1 when vulnerabilities were found: still a success.
     artifacts, contents = rpm_scan_artifacts(exit_code=1)
     client = FakeJenkinsClient(artifacts=artifacts, contents=contents)
@@ -84,7 +84,7 @@ def test_sync_task_treats_scanner_exit_code_one_as_finished(session):
 
     sync_task(session, client, task)
 
-    assert task.scanner_exit_code == 1
+    assert task.cbt_exit_code == 1
     assert task.state == "FINISHED"
     assert task.total_vulnerabilities == 2
 
@@ -96,7 +96,7 @@ def test_sync_task_fails_when_scanner_reports_an_error(session):
 
     sync_task(session, client, task)
 
-    assert task.scanner_exit_code == 2
+    assert task.cbt_exit_code == 2
     assert task.state == "FAILED"
 
 

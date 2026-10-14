@@ -109,7 +109,7 @@ def _apply_manifest(task: RpmScanTask, manifest: dict[str, Any]) -> None:
     task.rpm_size_bytes = rpm.get("size_bytes")
     task.scanner = scanner.get("name")
     task.scanner_version = scanner.get("version")
-    task.scanner_exit_code = scanner.get("exit_code")
+    task.cbt_exit_code = scanner.get("exit_code")
     task.scanner_args = scanner.get("args")
     task.scan_metadata = {"manifest": manifest}
 
@@ -179,7 +179,7 @@ def sync_task(
         _apply_manifest(task, manifest)
         _replace_results(db, task, results)
         task.state = (
-            RPM_FINISHED if task.scanner_exit_code in {0, 1} else RPM_FAILED
+            RPM_FINISHED if task.cbt_exit_code in {0, 1} else RPM_FAILED
         )
         task.sync_status = "SYNCED"
         task.sync_error = None

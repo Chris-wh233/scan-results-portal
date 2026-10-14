@@ -32,7 +32,7 @@ def upgrade() -> None:
         sa.Column("state", sa.String(length=30), nullable=False),
         sa.Column("scanner", sa.String(length=100), nullable=True),
         sa.Column("scanner_version", sa.String(length=100), nullable=True),
-        sa.Column("scanner_exit_code", sa.Integer(), nullable=True),
+        sa.Column("cbt_exit_code", sa.Integer(), nullable=True),
         sa.Column("scanner_args", json_type, nullable=True),
         sa.Column("triggered_by", sa.String(length=200), nullable=True),
         sa.Column("total_vulnerabilities", sa.Integer(), nullable=True),

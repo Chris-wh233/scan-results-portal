@@ -13,4 +13,4 @@ class RpmEventRequest(BaseModel):
     rpm_sha256: str = Field(..., min_length=64, max_length=64)
     created_at: datetime | None = None
     finished_at: datetime | None = None
-    scanner_exit_code: int | None = None
+    cbt_exit_code: int | None = None

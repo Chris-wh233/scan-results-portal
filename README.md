@@ -210,7 +210,7 @@ RPM 事件体示例：
 ~~~
 
 completed 与 failed 事件在各自事件体上追加结束时间与退出码：SRPM 用
-`csmock_exit_code`，RPM 用 `scanner_exit_code`。completed 只表示扫描与归档阶段
+`csmock_exit_code`，RPM 用 `cbt_exit_code`。completed 只表示扫描与归档阶段
 已正常结束，不直接代表 FINISHED；服务会重新读取 Jenkins Artifact 验证结果。
 
 ## 数据库

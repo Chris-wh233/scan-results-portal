@@ -56,7 +56,7 @@ class RpmScanTask(Base):
     state: Mapped[str] = mapped_column(String(30), nullable=False)
     scanner: Mapped[str | None] = mapped_column(String(100))
     scanner_version: Mapped[str | None] = mapped_column(String(100))
-    scanner_exit_code: Mapped[int | None] = mapped_column(Integer)
+    cbt_exit_code: Mapped[int | None] = mapped_column(Integer)
     scanner_args: Mapped[list[str] | None] = mapped_column(JSON_TYPE)
     triggered_by: Mapped[str | None] = mapped_column(String(200))
 

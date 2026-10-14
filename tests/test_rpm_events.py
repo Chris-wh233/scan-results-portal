@@ -53,14 +53,14 @@ def test_register_start_is_idempotent_for_the_same_build(session):
 def test_register_start_preserves_a_terminal_state(session):
     task = register_start(session, _values())
     session.commit()
-    fail_task(session, task, {"scanner_exit_code": 2})
+    fail_task(session, task, {"cbt_exit_code": 2})
     session.commit()
 
     retried = register_start(session, _values())
     session.commit()
 
     assert retried.state == "FAILED"
-    assert retried.scanner_exit_code == 2
+    assert retried.cbt_exit_code == 2
 
 
 def test_fail_task_records_exit_code(session):
@@ -70,12 +70,12 @@ def test_fail_task_records_exit_code(session):
     fail_task(
         session,
         task,
-        {"scanner_exit_code": 2, "finished_at": FINISHED_AT},
+        {"cbt_exit_code": 2, "finished_at": FINISHED_AT},
     )
     session.commit()
 
     assert task.state == "FAILED"
-    assert task.scanner_exit_code == 2
+    assert task.cbt_exit_code == 2
     assert task.sync_status == "SYNCED"
     assert task.sync_error is None
     assert task.finished_at is not None
@@ -94,7 +94,7 @@ def test_complete_task_reaches_finished_on_valid_artifacts(
         session,
         settings,
         task,
-        {**_values(), "finished_at": FINISHED_AT, "scanner_exit_code": 0},
+        {**_values(), "finished_at": FINISHED_AT, "cbt_exit_code": 0},
     )
 
     assert task.state == "FINISHED"

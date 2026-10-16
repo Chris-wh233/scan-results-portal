@@ -64,7 +64,23 @@
   <h3>Vulnerabilities</h3>
   <div class="table-wrap"><table>
     <thead><tr><th>CVE</th><th>Severity</th><th>Score</th><th>Component</th><th>Source</th><th>Evidence</th></tr></thead>
-    <tbody>{% for row in task.vulnerabilities %}<tr><td>{{ row.cve_number }}</td><td>{{ row.severity }}</td><td>{{ row.score if row.score is not none else "—" }}</td><td>{{ row.vendor }}.{{ row.product }} {{ row.version }}</td><td>{{ row.source or "—" }}</td><td><details><summary>View</summary>{% if row.description %}<p>{{ row.description }}</p>{% endif %}<p>{{ row.paths or "No path data" }}</p>{% if row.cvss_vector %}<p>{{ row.cvss_vector }}</p>{% endif %}</details></td></tr>{% else %}<tr><td colspan="6" class="empty">No vulnerabilities found.</td></tr>{% endfor %}</tbody>
+    <tbody>
+    {% for row in task.vulnerabilities %}
+      <tr>
+        <td>{{ row.cve_number }}</td>
+        <td>{{ row.severity }}</td>
+        <td>{{ row.score if row.score is not none else "—" }}</td>
+        <td>{{ row.vendor }}.{{ row.product }} {{ row.version }}</td>
+        <td>{{ row.source or "—" }}</td>
+        <td><button type="button" class="evidence-toggle" aria-expanded="false" aria-controls="evidence-{{ row.id }}">View</button></td>
+      </tr>
+      <tr class="evidence-row" id="evidence-{{ row.id }}" hidden>
+        <td colspan="6">{% if row.description %}<p>{{ row.description }}</p>{% endif %}<p>{{ row.paths or "No path data" }}</p>{% if row.cvss_vector %}<p>{{ row.cvss_vector }}</p>{% endif %}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6" class="empty">No vulnerabilities found.</td></tr>
+    {% endfor %}
+    </tbody>
   </table></div>
 </section>
 
@@ -76,4 +92,21 @@
   {% else %}<li class="empty">No logs or artifacts indexed.</li>{% endfor %}
   </ul>
 </section>
+
+<script>
+document.querySelectorAll(".evidence-toggle").forEach(function (button) {
+  button.addEventListener("click", function () {
+    const row = document.getElementById(button.getAttribute("aria-controls"));
+    if (!row) return;
+    const expand = row.hasAttribute("hidden");
+    if (expand) {
+      row.removeAttribute("hidden");
+    } else {
+      row.setAttribute("hidden", "");
+    }
+    button.setAttribute("aria-expanded", expand ? "true" : "false");
+    button.textContent = expand ? "Hide" : "View";
+  });
+});
+</script>
 {% endblock %}

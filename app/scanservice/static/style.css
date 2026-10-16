@@ -84,3 +84,24 @@ tr:last-child td { border-bottom: 0; }
 .tabs { display: flex; gap: 18px; border-bottom: 1px solid #d9dde5; padding-bottom: 10px; }
 .pagination { display: flex; gap: 18px; justify-content: center; margin: 20px; }
 .error { color: #8e1e2d; background: #fff0f2; padding: 10px; border-radius: 4px; }
+
+/* 漏洞证据：点击 View 在下一行用整行（colspan）展开，
+   不占用 Evidence 列本身，因此不会挤压其它列宽，后续行整体下移 */
+.evidence-toggle {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: #3578c4;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.evidence-toggle:hover { color: #24558f; }
+.evidence-row[hidden] { display: none; }
+.evidence-row td {
+  background: #f7f8fa;
+  color: #3f4756;
+  overflow-wrap: anywhere;
+}
+.evidence-row p { margin: 0 0 6px; }
+.evidence-row p:last-child { margin-bottom: 0; }

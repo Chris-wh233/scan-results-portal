@@ -1,6 +1,6 @@
 import pytest
 
-from conftest import RPM_SCAN_KEY, FakeJenkinsClient
+from conftest import RPM_BUILD_NUMBER, RPM_SCAN_KEY, FakeJenkinsClient
 
 from scanservice.modules.rpm.models import RpmScanArtifact, RpmScanTask
 from scanservice.modules.rpm.services import artifacts as artifacts_module
@@ -19,7 +19,7 @@ def _task_with_artifact(session, monkeypatch, name, artifact_type, content):
     )
     session.add(task)
     session.flush()
-    relative_path = f"rpm-scan-artifacts/{RPM_SCAN_KEY}/{name}"
+    relative_path = f"rpm-scan-artifacts/{RPM_BUILD_NUMBER}/{name}"
     row = RpmScanArtifact(
         task=task,
         name=name,

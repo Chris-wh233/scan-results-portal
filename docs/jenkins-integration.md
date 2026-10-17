@@ -151,7 +151,7 @@ scan.log
 
 ### 4.2 RPM
 
-门户只读取位于 `rpm-scan-artifacts/<scan_key>/` 前缀下的这些文件：
+门户只读取位于 `rpm-scan-artifacts/<build_number>/` 前缀下的这些文件：
 
 ```text
 scan-manifest.json
@@ -206,4 +206,4 @@ Pipeline 不需要调用这些接口，它们主要服务于页面上的手动�
 - 任务为 `NOT_AVAILABLE`：产物没有归档、归档损坏，或缺少预期文件；
 - 任务为 `FAILED`：扫描阶段本身失败（SRPM 收到 `failed`；RPM 退出码大于 1）；
 - 归档已上传但门户读不到：确认产物是通过 `archiveArtifacts` 归档到本构建，
-  且 RPM 的产物位于 `rpm-scan-artifacts/<scan_key>/` 前缀下。
+  且 RPM 的产物位于 `rpm-scan-artifacts/<build_number>/` 前缀下。

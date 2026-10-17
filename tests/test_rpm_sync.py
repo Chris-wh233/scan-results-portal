@@ -2,6 +2,7 @@ import pytest
 from sqlalchemy import select
 
 from conftest import (
+    RPM_BUILD_NUMBER,
     RPM_SCAN_KEY,
     FakeJenkinsClient,
     rpm_scan_artifacts,
@@ -19,7 +20,9 @@ from scanservice.modules.rpm.services.synchronization import (
 )
 
 
-def _task(session, *, build_number=7, state="RUNNING", scan_key=RPM_SCAN_KEY):
+def _task(
+    session, *, build_number=RPM_BUILD_NUMBER, state="RUNNING", scan_key=RPM_SCAN_KEY
+):
     task = RpmScanTask(
         scan_key=scan_key,
         jenkins_job_full_name="rpm-docker-test",
@@ -121,8 +124,10 @@ def test_sync_task_keeps_running_while_build_is_building(session):
     assert task.sync_status == "PENDING"
 
 
-def test_sync_task_ignores_artifacts_from_another_scan_key(session):
-    artifacts, contents = rpm_scan_artifacts(prefix=f"rpm-scan-artifacts/{'b' * 64}")
+def test_sync_task_ignores_artifacts_from_another_build(session):
+    artifacts, contents = rpm_scan_artifacts(
+        prefix=f"rpm-scan-artifacts/{RPM_BUILD_NUMBER + 1}"
+    )
     client = FakeJenkinsClient(artifacts=artifacts, contents=contents)
     task = _task(session)
 

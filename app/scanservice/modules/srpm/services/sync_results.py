@@ -8,7 +8,20 @@ from sqlalchemy.orm import Session
 from ..models import SrpmScanFinding, SrpmScanSummary, SrpmScanTask
 
 
+def _text_value(value: Any) -> str | None:
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return str(value)
+    return None
+
+
 def set_manifest(task: SrpmScanTask, manifest: dict[str, Any]) -> None:
+    # A Jenkins build can contain both RPM and SRPM artifacts. Never treat an
+    # RPM manifest as SRPM metadata even if it reaches this function.
+    if str(manifest.get("scan_type") or "").lower() == "rpm":
+        return
+
     for field in (
         "package_name",
         "version",
@@ -19,18 +32,34 @@ def set_manifest(task: SrpmScanTask, manifest: dict[str, Any]) -> None:
         "source_revision",
         "source_url",
         "source_sha256",
-        "scanner",
-        "scanner_version",
         "mock_config",
-        "csmock_exit_code",
         "gate_result",
     ):
-        value = manifest.get(field)
+        value = _text_value(manifest.get(field))
         if value is not None:
             setattr(task, field, value)
+
+    scanner = manifest.get("scanner")
+    scanner_name = None
+    scanner_version = _text_value(manifest.get("scanner_version"))
+    if isinstance(scanner, dict):
+        scanner_name = _text_value(scanner.get("name"))
+        scanner_version = scanner_version or _text_value(scanner.get("version"))
+    else:
+        scanner_name = _text_value(scanner)
+    if scanner_name is not None:
+        task.scanner = scanner_name
+    if scanner_version is not None:
+        task.scanner_version = scanner_version
+
+    exit_code = manifest.get("csmock_exit_code")
+    if isinstance(exit_code, int) and not isinstance(exit_code, bool):
+        task.csmock_exit_code = exit_code
+
     plugins = manifest.get("plugins") or manifest.get("enabled_plugins")
-    if plugins is not None:
+    if isinstance(plugins, list) and all(isinstance(item, str) for item in plugins):
         task.enabled_plugins = plugins
+
     task.scan_metadata = {**(task.scan_metadata or {}), "manifest": manifest}
 
 

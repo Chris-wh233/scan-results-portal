@@ -13,6 +13,7 @@ from ..parsers.csmock import classify_artifact
 
 
 MAX_ARCHIVE_BYTES = 512 * 1024 * 1024
+SRPM_ARTIFACT_PREFIX = "srpm-scan-artifacts/"
 REQUIRED_SCAN_FILES = frozenset(
     {
         "scan.ini",
@@ -25,12 +26,19 @@ REQUIRED_SCAN_FILES = frozenset(
 )
 
 
+def is_srpm_artifact(path: str) -> bool:
+    return path.startswith(SRPM_ARTIFACT_PREFIX)
+
+
 def find_artifact(
     artifacts: list[dict[str, object]], basename: str
 ) -> dict[str, object] | None:
     for artifact in artifacts:
         path = artifact.get("relativePath") or artifact.get("fileName") or ""
-        if path == basename or str(path).endswith(f"/{basename}"):
+        path = str(path)
+        if not is_srpm_artifact(path):
+            continue
+        if path == basename or path.endswith(f"/{basename}"):
             return artifact
     return None
 
@@ -61,6 +69,8 @@ def upsert_artifact(
     if not relative_path:
         return
     relative_path = str(relative_path)
+    if not is_srpm_artifact(relative_path):
+        return
     row = session.scalar(
         select(SrpmScanArtifact).where(
             SrpmScanArtifact.task_id == task.id,
@@ -91,6 +101,8 @@ def find_valid_scan_archive(
 ) -> tuple[str, bytes, list[ArchiveMember]] | None:
     for archive in archives:
         path, _, members = archive
+        if not is_srpm_artifact(path):
+            continue
         if not path.lower().endswith(".tar.xz"):
             continue
         if REQUIRED_SCAN_FILES.issubset({member.name for member in members}):
@@ -105,6 +117,8 @@ def upsert_archive_members(
     members: list[ArchiveMember],
     top_level_names: set[str],
 ) -> None:
+    if not is_srpm_artifact(archive_path):
+        return
     prefix = f"{archive_path}::"
     old_rows = session.scalars(
         select(SrpmScanArtifact).where(SrpmScanArtifact.task_id == task.id)

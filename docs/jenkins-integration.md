@@ -123,8 +123,8 @@ Build 的 artifacts 并自行校验。
 
 ### 4.1 SRPM
 
-门户会在该构建的所有 artifacts 中挑选第一个满足条件的 `.tar.xz` 作为扫描
-结果，条件是：
+门户只处理位于 `srpm-scan-artifacts/` 前缀下的 artifacts，并从中挑选第一个
+满足条件的 `.tar.xz` 作为扫描结果，条件是：
 
 - 归档内**必须包含**以下 6 个文件：
 
@@ -142,12 +142,13 @@ scan.log
 - 归档必须能正常解压，且单个归档不超过 512 MiB；
 - 门户还要求 `scan.ini` 可解析、`scan-results-summary.txt` 存在；
 - 可选：额外归档 `.sarif` 文件，门户会据此解析 finding 明细；
-- 可选：归档 `scan-manifest.json` 作为任务元数据（扁平结构，非嵌套）。
+- 可选：归档 `scan-manifest.json` 作为任务元数据（字段为扁平结构）。
   门户会读取其中的 `package_name`、`version`、`release`、`nvr`、
   `srpm_name`、`architecture`、`source_revision`、`source_url`、
   `source_sha256`、`scanner`、`scanner_version`、`mock_config`、
   `csmock_exit_code`、`gate_result`、`plugins`（或 `enabled_plugins`）。
-  解析失败会被静默忽略，不影响状态判定。
+  其中 `scanner` 可以是字符串，或包含 `name`、`version` 的对象；其他标量
+  字段类型不合法时会被忽略。解析失败会被静默忽略，不影响状态判定。
 
 ### 4.2 RPM
 

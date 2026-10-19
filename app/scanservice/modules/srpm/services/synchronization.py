@@ -40,6 +40,7 @@ from .sync_artifacts import (
     find_artifact as _find_artifact,
     find_valid_scan_archive as _find_valid_scan_archive,
     is_archive as _is_archive,
+    is_srpm_artifact as _is_srpm_artifact,
     upsert_archive_members as _upsert_archive_members,
     upsert_artifact as _upsert_artifact,
 )
@@ -106,7 +107,17 @@ def _sync_build(
         task.started_at = task.created_at
     task.triggered_by = _cause_user(detail)
 
-    artifacts = detail.get("artifacts") or []
+    for row in list(task.artifacts):
+        if not _is_srpm_artifact(row.relative_path):
+            session.delete(row)
+
+    artifacts = [
+        artifact
+        for artifact in detail.get("artifacts") or []
+        if _is_srpm_artifact(
+            str(artifact.get("relativePath") or artifact.get("fileName") or "")
+        )
+    ]
     for artifact in artifacts:
         _upsert_artifact(session, task, artifact, client, job, number)
     session.flush()

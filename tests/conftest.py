@@ -22,6 +22,7 @@ from scanservice.modules.srpm import models as _srpm_models  # noqa: F401
 RPM_SCAN_KEY = "a" * 64
 RPM_BUILD_NUMBER = 7
 RPM_ARTIFACT_PREFIX = f"rpm-scan-artifacts/{RPM_BUILD_NUMBER}/{RPM_SCAN_KEY}"
+SRPM_BUILD_NUMBER = 6
 
 SRPM_SCAN_FILES = (
     "scan.ini",
@@ -226,17 +227,21 @@ def srpm_archive_bytes(members: dict[str, str] | None = None) -> bytes:
 
 
 def srpm_scan_artifacts(
-    *, nvr: str = "curl-8.4.0-9.ocs23", members: dict[str, str] | None = None
+    *,
+    build_number: int = SRPM_BUILD_NUMBER,
+    nvr: str = "curl-8.4.0-9.ocs23",
+    members: dict[str, str] | None = None,
 ) -> tuple[list[dict], dict[str, bytes]]:
     """Return (build artifact rows, artifact contents) for one SRPM scan."""
     archive_name = f"{nvr}.tar.xz"
+    relative_path = f"srpm-scan-artifacts/{build_number}/{archive_name}"
     content = srpm_archive_bytes(members=members)
     rows = [
         {
             "fileName": archive_name,
-            "relativePath": archive_name,
+            "relativePath": relative_path,
             "size": len(content),
             "url": None,
         }
     ]
-    return rows, {archive_name: content}
+    return rows, {relative_path: content}

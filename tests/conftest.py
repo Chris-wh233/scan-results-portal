@@ -21,7 +21,7 @@ from scanservice.modules.srpm import models as _srpm_models  # noqa: F401
 
 RPM_SCAN_KEY = "a" * 64
 RPM_BUILD_NUMBER = 7
-RPM_ARTIFACT_PREFIX = f"rpm-scan-artifacts/{RPM_BUILD_NUMBER}"
+RPM_ARTIFACT_PREFIX = f"rpm-scan-artifacts/{RPM_BUILD_NUMBER}/{RPM_SCAN_KEY}"
 
 SRPM_SCAN_FILES = (
     "scan.ini",

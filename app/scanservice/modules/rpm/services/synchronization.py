@@ -48,7 +48,9 @@ def _artifact_name(artifact: dict[str, Any]) -> str:
 
 
 def _scan_artifacts(task: RpmScanTask, build: dict[str, Any]) -> dict[str, dict[str, Any]]:
-    expected_prefix = f"rpm-scan-artifacts/{task.jenkins_build_number}/"
+    expected_prefix = (
+        f"rpm-scan-artifacts/{task.jenkins_build_number}/{task.scan_key}/"
+    )
     matches = {}
     for artifact in build.get("artifacts") or []:
         path = _artifact_name(artifact)

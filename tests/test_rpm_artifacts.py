@@ -19,7 +19,7 @@ def _task_with_artifact(session, monkeypatch, name, artifact_type, content):
     )
     session.add(task)
     session.flush()
-    relative_path = f"rpm-scan-artifacts/{RPM_BUILD_NUMBER}/{name}"
+    relative_path = f"rpm-scan-artifacts/{RPM_BUILD_NUMBER}/{RPM_SCAN_KEY}/{name}"
     row = RpmScanArtifact(
         task=task,
         name=name,

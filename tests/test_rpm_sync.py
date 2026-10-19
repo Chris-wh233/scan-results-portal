@@ -126,7 +126,7 @@ def test_sync_task_keeps_running_while_build_is_building(session):
 
 def test_sync_task_ignores_artifacts_from_another_build(session):
     artifacts, contents = rpm_scan_artifacts(
-        prefix=f"rpm-scan-artifacts/{RPM_BUILD_NUMBER + 1}"
+        prefix=f"rpm-scan-artifacts/{RPM_BUILD_NUMBER + 1}/{RPM_SCAN_KEY}"
     )
     client = FakeJenkinsClient(artifacts=artifacts, contents=contents)
     task = _task(session)
@@ -136,6 +136,48 @@ def test_sync_task_ignores_artifacts_from_another_build(session):
     assert task.state == "NOT_AVAILABLE"
     assert client.requested_artifacts == []
     assert task.artifacts == []
+
+
+def test_sync_task_ignores_artifacts_from_another_scan_key(session):
+    other_scan_key = "b" * 64
+    artifacts, contents = rpm_scan_artifacts(
+        prefix=f"rpm-scan-artifacts/{RPM_BUILD_NUMBER}/{other_scan_key}"
+    )
+    client = FakeJenkinsClient(artifacts=artifacts, contents=contents)
+    task = _task(session)
+
+    sync_task(session, client, task)
+
+    assert task.state == "NOT_AVAILABLE"
+    assert client.requested_artifacts == []
+    assert task.artifacts == []
+
+
+def test_sync_multiple_rpm_tasks_in_the_same_build(session):
+    other_scan_key = "b" * 64
+    first_artifacts, first_contents = rpm_scan_artifacts()
+    second_artifacts, second_contents = rpm_scan_artifacts(
+        prefix=f"rpm-scan-artifacts/{RPM_BUILD_NUMBER}/{other_scan_key}",
+        sha256=other_scan_key,
+    )
+    client = FakeJenkinsClient(
+        artifacts=first_artifacts + second_artifacts,
+        contents={**first_contents, **second_contents},
+    )
+    first_task = _task(session)
+    second_task = _task(session, scan_key=other_scan_key)
+
+    sync_task(session, client, first_task)
+    sync_task(session, client, second_task)
+
+    assert first_task.state == "FINISHED"
+    assert second_task.state == "FINISHED"
+    assert {row.relative_path for row in first_task.artifacts} == set(
+        first_contents
+    )
+    assert {row.relative_path for row in second_task.artifacts} == set(
+        second_contents
+    )
 
 
 def test_sync_task_rejects_manifest_for_a_different_rpm(session):

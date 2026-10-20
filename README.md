@@ -16,11 +16,11 @@ csmock 的源码包（SRPM）扫描结果，以及 cve-bin-tool 的二进制 RPM
 
 | 扫描类型 | 扫描工具 | 执行者 | 结果表 |
 | --- | --- | --- | --- |
-| SRPM | csmock | 待开发） | srpm_scan_* |
+| SRPM | csmock | srpm-scan-agent | srpm_scan_* |
 | RPM | cve-bin-tool | rpm-scan-agent | rpm_scan_* |
 
-本服务是 `scan-service` 扫描服务栈的一员，与 `rpm-scan-agent`、PostgreSQL
-一起由上级目录的 `docker-compose.yml` 统一管理。
+本服务是 `scan-service` 扫描服务栈的一员，与 `rpm-scan-agent`、
+`srpm-scan-agent`、PostgreSQL 一起由上级目录的 `docker-compose.yml` 统一管理。
 
 ## 扫描状态
 

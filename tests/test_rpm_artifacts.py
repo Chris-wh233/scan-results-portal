@@ -69,7 +69,11 @@ def test_view_serves_html_with_its_own_type_and_sandbox(session, monkeypatch):
         response.headers["content-disposition"]
         == 'inline; filename="scan-results.html"'
     )
-    assert response.headers["content-security-policy"].startswith("sandbox")
+    policy = response.headers["content-security-policy"]
+    assert policy.startswith("sandbox allow-scripts;")
+    assert "script-src 'unsafe-inline'" in policy
+    assert "connect-src 'none'" in policy
+    assert "allow-same-origin" not in policy
 
 
 def test_download_keeps_original_media_type_and_attachment(session, monkeypatch):

@@ -50,5 +50,12 @@ def artifact_response(
         "Content-Disposition": f'{disposition}; filename="{artifact.name.replace(chr(34), chr(39))}"'
     }
     if not download and artifact.artifact_type == "REPORT_HTML":
-        headers["Content-Security-Policy"] = "sandbox; default-src 'self' 'unsafe-inline' data:"
+        headers["Content-Security-Policy"] = (
+            "sandbox allow-scripts; "
+            "default-src 'none'; "
+            "script-src 'unsafe-inline'; "
+            "style-src 'unsafe-inline'; "
+            "img-src data: blob:; "
+            "connect-src 'none'"
+        )
     return Response(content=content, media_type=media_type, headers=headers)

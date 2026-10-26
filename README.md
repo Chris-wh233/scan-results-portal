@@ -75,7 +75,6 @@ RPM：归档中存在 `scan-manifest.json` 与 `scan-results.json`，两者校�
 
 | 服务 | 容器名称 | 镜像 |
 | --- | --- | --- |
-| HTTPS gateway | scan-results-portal-gateway | lcr.loongnix.cn/library/nginx:1.28.0-alpine3.21 |
 | Scan Results Portal | scan-results-portal-service | scan-results-portal:latest |
 | PostgreSQL | scan-results-portal-postgres | lcr.loongnix.cn/library/postgres:14-alpine3.23 |
 
@@ -85,11 +84,14 @@ PostgreSQL 数据保存到 Docker Volume（显式固定卷名，跨项目名稳�
 scanportal_pgdata
 ~~~
 
-Portal 应用容器不直接映射宿主端口。上级编排中的 HTTPS gateway 对外提供：
+测试阶段，Portal 应用容器通过上级编排直接发布 HTTP 端口：
 
 ~~~text
-https://<宿主机>:8081
+http://<宿主机>:8081
 ~~~
+
+该直连方式只用于受控内网测试。生产环境部署和路由约定见上级目录
+[`PORTAL-DEPLOYMENT.md`](../PORTAL-DEPLOYMENT.md)。
 
 启动服务（在 scan-service 目录执行）：
 
@@ -101,8 +103,8 @@ docker compose up -d --build scan-results-portal
 健康检查：
 
 ~~~bash
-curl --cacert gateway/tls/tls.crt https://127.0.0.1:8081/healthz
-curl --cacert gateway/tls/tls.crt https://127.0.0.1:8081/readyz
+curl http://127.0.0.1:8081/healthz
+curl http://127.0.0.1:8081/readyz
 ~~~
 
 ## 配置
@@ -130,7 +132,7 @@ config/config.yaml
 
 `artifacts` 分区定义解析与下载资源预算，包括单次解析大小、公开下载大小、
 压缩包大小、成员数量、单成员大小、累计解压大小和最大压缩比。所有 Jenkins
-产物读取均在流式读取过程中执行硬限制；公开下载由 HTTPS gateway 继续限制
+产物读取均在流式读取过程中执行硬限制。生产环境还应由公网入口限制
 单来源速率与并发数。
 
 ## 刷新行为
@@ -181,7 +183,7 @@ Authorization: Bearer <SCAN_SERVICE_OPERATOR_TOKEN>
 ~~~bash
 curl -X POST \
   -H "Authorization: Bearer $SCAN_SERVICE_OPERATOR_TOKEN" \
-  https://portal.example/api/v1/srpm/sync
+  http://<Portal内网地址>:8081/api/v1/srpm/sync
 ~~~
 
 Jenkins 事件接口：

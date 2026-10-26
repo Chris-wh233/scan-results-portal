@@ -75,6 +75,7 @@ RPM：归档中存在 `scan-manifest.json` 与 `scan-results.json`，两者校�
 
 | 服务 | 容器名称 | 镜像 |
 | --- | --- | --- |
+| HTTPS gateway | scan-results-portal-gateway | lcr.loongnix.cn/library/nginx:1.28.0-alpine3.21 |
 | Scan Results Portal | scan-results-portal-service | scan-results-portal:latest |
 | PostgreSQL | scan-results-portal-postgres | lcr.loongnix.cn/library/postgres:14-alpine3.23 |
 
@@ -84,10 +85,10 @@ PostgreSQL 数据保存到 Docker Volume（显式固定卷名，跨项目名稳�
 scanportal_pgdata
 ~~~
 
-Scan Results Portal 对外提供端口：
+Portal 应用容器不直接映射宿主端口。上级编排中的 HTTPS gateway 对外提供：
 
 ~~~text
-http://<宿主机>:8081
+https://<宿主机>:8081
 ~~~
 
 启动服务（在 scan-service 目录执行）：
@@ -100,8 +101,8 @@ docker compose up -d --build scan-results-portal
 健康检查：
 
 ~~~bash
-curl http://127.0.0.1:8081/healthz
-curl http://127.0.0.1:8081/readyz
+curl --cacert gateway/tls/tls.crt https://127.0.0.1:8081/healthz
+curl --cacert gateway/tls/tls.crt https://127.0.0.1:8081/readyz
 ~~~
 
 ## 配置

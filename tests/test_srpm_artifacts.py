@@ -1,6 +1,8 @@
+import asyncio
+
 import pytest
 
-from conftest import FakeJenkinsClient, srpm_archive_bytes
+from conftest import FakeJenkinsClient, response_body, srpm_archive_bytes
 
 from scanservice.modules.srpm.models import SrpmScanArtifact, SrpmScanTask
 from scanservice.modules.srpm.services import artifacts as artifacts_module
@@ -52,7 +54,7 @@ def test_view_serves_text_artifacts_inline(session, monkeypatch, name, artifact_
 
     assert response.headers["content-type"] == "text/plain; charset=utf-8"
     assert response.headers["content-disposition"] == f'inline; filename="{name}"'
-    assert response.body == b"content\n"
+    assert asyncio.run(response_body(response)) == b"content\n"
 
 
 def test_view_of_an_archive_points_to_the_download_link(session, monkeypatch):
@@ -77,7 +79,7 @@ def test_download_of_an_archive_is_an_attachment(session, monkeypatch):
         response.headers["content-disposition"]
         == 'attachment; filename="curl-8.4.0-9.ocs23.tar.xz"'
     )
-    assert response.body == content
+    assert asyncio.run(response_body(response)) == content
 
 
 def test_archive_member_download_is_an_attachment(session, monkeypatch):

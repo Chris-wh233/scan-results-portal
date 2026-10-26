@@ -12,7 +12,6 @@ from ..models import SrpmScanArtifact, SrpmScanTask
 from ..parsers.csmock import classify_artifact
 
 
-MAX_ARCHIVE_BYTES = 512 * 1024 * 1024
 SRPM_ARTIFACT_PREFIX = "srpm-scan-artifacts/"
 REQUIRED_SCAN_FILES = frozenset(
     {

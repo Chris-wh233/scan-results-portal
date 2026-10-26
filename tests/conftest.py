@@ -104,12 +104,40 @@ class FakeJenkinsClient:
             "actions": [{"causes": self.causes}] if self.causes else [],
         }
 
-    def get_artifact(self, job_name: str, number: int, relative_path: str) -> bytes:
+    def get_artifact(
+        self,
+        job_name: str,
+        number: int,
+        relative_path: str,
+        *,
+        max_bytes: int | None = None,
+    ) -> bytes:
         self.requested_artifacts.append(relative_path)
         try:
-            return self.contents[relative_path]
+            content = self.contents[relative_path]
         except KeyError as exc:
             raise KeyError(f"unexpected artifact request: {relative_path}") from exc
+        if max_bytes is not None and len(content) > max_bytes:
+            raise ValueError("artifact exceeds configured limit")
+        return content
+
+    def iter_artifact(
+        self,
+        job_name: str,
+        number: int,
+        relative_path: str,
+        *,
+        max_bytes: int,
+        chunk_size: int = 64 * 1024,
+    ):
+        content = self.get_artifact(
+            job_name,
+            number,
+            relative_path,
+            max_bytes=max_bytes,
+        )
+        for offset in range(0, len(content), chunk_size):
+            yield content[offset : offset + chunk_size]
 
     def _url(self, path: str) -> str:
         return f"http://jenkins/{path.lstrip('/')}"
@@ -247,3 +275,13 @@ def srpm_scan_artifacts(
         }
     ]
     return rows, {relative_path: content}
+
+
+async def response_body(response) -> bytes:
+    body = getattr(response, "body", None)
+    if body is not None:
+        return body
+    chunks = []
+    async for chunk in response.body_iterator:
+        chunks.append(chunk.encode() if isinstance(chunk, str) else chunk)
+    return b"".join(chunks)

@@ -34,7 +34,6 @@ from ..domain.state import (
     result_after_valid_archive,
 )
 from .sync_artifacts import (
-    MAX_ARCHIVE_BYTES,
     REQUIRED_SCAN_FILES,
     artifact_url as _artifact_url,
     find_artifact as _find_artifact,
@@ -49,9 +48,6 @@ from .sync_results import (
     set_ini as _set_ini,
     set_manifest as _set_manifest,
 )
-
-MAX_PARSE_BYTES = 8 * 1024 * 1024
-
 
 def _jenkins_time(milliseconds: Any) -> datetime | None:
     if not milliseconds:
@@ -76,6 +72,7 @@ def _sync_build(
     job: str | None = None,
 ) -> SrpmScanTask:
     number = int(build_number)
+    limits = settings.artifact_limits
     job = job or ""
     if not job:
         raise ValueError("Jenkins job is required to synchronize a build")
@@ -134,11 +131,16 @@ def _sync_build(
         size = artifact.get("size")
         if not archive_path or not _is_archive(archive_path):
             continue
-        if size is not None and int(size) > MAX_ARCHIVE_BYTES:
+        if size is not None and int(size) > limits.max_archive_bytes:
             continue
         try:
-            content = client.get_artifact(job, number, archive_path)
-            members = list_visible_members(content)
+            content = client.get_artifact(
+                job,
+                number,
+                archive_path,
+                max_bytes=limits.max_archive_bytes,
+            )
+            members = list_visible_members(content, limits)
         except (OSError, tarfile.TarError, ValueError):
             continue
         archive_contents.append((archive_path, content, members))
@@ -165,12 +167,17 @@ def _sync_build(
         if not artifact:
             return None
         size = artifact.get("size")
-        if size is not None and int(size) > MAX_PARSE_BYTES:
+        if size is not None and int(size) > limits.max_parse_bytes:
             return None
         path = artifact.get("relativePath") or artifact.get("fileName")
         if not path:
             return None
-        return client.get_artifact(job, number, path)
+        return client.get_artifact(
+            job,
+            number,
+            path,
+            max_bytes=limits.max_parse_bytes,
+        )
 
     def read_archive_artifact(basename: str) -> bytes | None:
         archives = [valid_scan_archive] if valid_scan_archive else archive_contents
@@ -181,8 +188,10 @@ def _sync_build(
             member = next((item for item in members if item.name == basename), None)
             if member is None:
                 continue
+            if member.size > limits.max_parse_bytes:
+                continue
             try:
-                return read_visible_member(content, member.path)
+                return read_visible_member(content, member.path, limits)
             except (KeyError, OSError, tarfile.TarError):
                 continue
         return None
@@ -229,13 +238,20 @@ def _sync_build(
     sarif_bytes = None
     if sarif_artifact:
         path = sarif_artifact.get("relativePath") or sarif_artifact.get("fileName")
-        sarif_bytes = client.get_artifact(job, number, path)
+        size = sarif_artifact.get("size")
+        if size is None or int(size) <= limits.max_parse_bytes:
+            sarif_bytes = client.get_artifact(
+                job,
+                number,
+                path,
+                max_bytes=limits.max_parse_bytes,
+            )
     else:
         for _, content, members in archive_contents:
             member = next((item for item in members if item.name.lower().endswith(".sarif")), None)
-            if member is not None:
+            if member is not None and member.size <= limits.max_parse_bytes:
                 try:
-                    sarif_bytes = read_visible_member(content, member.path)
+                    sarif_bytes = read_visible_member(content, member.path, limits)
                 except (KeyError, OSError, tarfile.TarError):
                     sarif_bytes = None
                 break

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from fastapi import HTTPException
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 
 from ....config import get_settings
 from ....jenkins import JenkinsClient
@@ -23,22 +23,29 @@ def artifact_response(
     download: bool,
 ) -> Response:
     settings = get_settings()
+    max_bytes = settings.artifact_limits.max_download_bytes
+    if artifact.size_bytes is not None and artifact.size_bytes > max_bytes:
+        raise HTTPException(status_code=413, detail="artifact is too large to serve")
     client = JenkinsClient(
         settings.jenkins_base_url,
         settings.jenkins_user,
         settings.jenkins_token,
         settings.request_timeout_seconds,
     )
-    try:
-        content = client.get_artifact(
-            task.jenkins_job_full_name,
-            task.jenkins_build_number,
-            artifact.relative_path,
-        )
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"unable to read artifact: {exc}") from exc
-    finally:
-        client.close()
+    job_name = task.jenkins_job_full_name
+    build_number = task.jenkins_build_number
+    relative_path = artifact.relative_path
+
+    def body():
+        try:
+            yield from client.iter_artifact(
+                job_name,
+                build_number,
+                relative_path,
+                max_bytes=max_bytes,
+            )
+        finally:
+            client.close()
 
     media_type = artifact_media_type(
         artifact_type=artifact.artifact_type,
@@ -58,4 +65,4 @@ def artifact_response(
             "img-src data: blob:; "
             "connect-src 'none'"
         )
-    return Response(content=content, media_type=media_type, headers=headers)
+    return StreamingResponse(content=body(), media_type=media_type, headers=headers)

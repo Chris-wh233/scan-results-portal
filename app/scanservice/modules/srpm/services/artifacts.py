@@ -4,11 +4,11 @@ import mimetypes
 import tarfile
 
 from fastapi import HTTPException
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse, Response, StreamingResponse
 
-from ..csmock.archive import list_visible_members, read_visible_member
+from ..csmock.archive import ArchiveLimitError, list_visible_members, read_visible_member
 from ....config import get_settings
-from ....jenkins import JenkinsClient
+from ....jenkins import JenkinsArtifactTooLarge, JenkinsClient
 from ....media import artifact_media_type
 from ..models import SrpmScanArtifact, SrpmScanTask
 
@@ -40,6 +40,10 @@ def read_artifact_content(task: SrpmScanTask, row: SrpmScanArtifact) -> bytes:
         raise HTTPException(status_code=404, detail="artifact source not found")
 
     settings = get_settings()
+    limits = settings.artifact_limits
+    if member_path and archive_row.size_bytes is not None:
+        if archive_row.size_bytes > limits.max_archive_bytes:
+            raise HTTPException(status_code=413, detail="archive is too large to inspect")
     client = JenkinsClient(
         settings.jenkins_base_url,
         settings.jenkins_user,
@@ -48,20 +52,27 @@ def read_artifact_content(task: SrpmScanTask, row: SrpmScanArtifact) -> bytes:
     )
     try:
         content = client.get_artifact(
-            task.jenkins_job_full_name, task.jenkins_build_number, source_path
+            task.jenkins_job_full_name,
+            task.jenkins_build_number,
+            source_path,
+            max_bytes=limits.max_archive_bytes if member_path else limits.max_download_bytes,
         )
+    except (ArchiveLimitError, JenkinsArtifactTooLarge) as exc:
+        raise HTTPException(status_code=413, detail="artifact exceeds resource limits") from exc
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"unable to read artifact: {exc}") from exc
+        raise HTTPException(status_code=502, detail="unable to read artifact") from exc
     finally:
         client.close()
 
     if member_path is None:
         return content
     try:
-        visible = {item.path for item in list_visible_members(content)}
+        visible = {item.path for item in list_visible_members(content, limits)}
         if member_path not in visible:
             raise KeyError(member_path)
-        return read_visible_member(content, member_path)
+        return read_visible_member(content, member_path, limits)
+    except ArchiveLimitError as exc:
+        raise HTTPException(status_code=413, detail="archive exceeds resource limits") from exc
     except (KeyError, OSError, ValueError, tarfile.TarError) as exc:
         raise HTTPException(status_code=404, detail="archive member not found") from exc
 
@@ -73,15 +84,55 @@ def artifact_response(task: SrpmScanTask, row: SrpmScanArtifact, *, download: bo
             "<p>This artifact cannot be viewed online. "
             "Use the <b>[download]</b> link to download it.</p>"
         )
-    content = read_artifact_content(task, row)
+    if "::" in row.relative_path:
+        content = read_artifact_content(task, row)
+        media_type = artifact_media_type(
+            artifact_type=row.artifact_type,
+            filename=filename,
+            download=download,
+        )
+        disposition = "attachment" if download else "inline"
+        return Response(
+            content=content,
+            media_type=media_type,
+            headers={"Content-Disposition": f'{disposition}; filename="{filename}"'},
+        )
+
+    if not task.jenkins_job_full_name or task.jenkins_build_number is None:
+        raise HTTPException(status_code=404, detail="artifact source not found")
+    settings = get_settings()
+    max_bytes = settings.artifact_limits.max_download_bytes
+    if row.size_bytes is not None and row.size_bytes > max_bytes:
+        raise HTTPException(status_code=413, detail="artifact is too large to serve")
+    client = JenkinsClient(
+        settings.jenkins_base_url,
+        settings.jenkins_user,
+        settings.jenkins_token,
+        settings.request_timeout_seconds,
+    )
+    job_name = task.jenkins_job_full_name
+    build_number = task.jenkins_build_number
+    relative_path = row.relative_path
+
+    def body():
+        try:
+            yield from client.iter_artifact(
+                job_name,
+                build_number,
+                relative_path,
+                max_bytes=max_bytes,
+            )
+        finally:
+            client.close()
+
     media_type = artifact_media_type(
         artifact_type=row.artifact_type,
         filename=filename,
         download=download,
     )
     disposition = "attachment" if download else "inline"
-    return Response(
-        content=content,
+    return StreamingResponse(
+        content=body(),
         media_type=media_type,
         headers={"Content-Disposition": f'{disposition}; filename="{filename}"'},
     )
@@ -104,6 +155,9 @@ def archive_member_response(task: SrpmScanTask, archive_ref: str) -> Response:
         raise HTTPException(status_code=404, detail="archive not found")
 
     settings = get_settings()
+    limits = settings.artifact_limits
+    if archive_row.size_bytes is not None and archive_row.size_bytes > limits.max_archive_bytes:
+        raise HTTPException(status_code=413, detail="archive is too large to inspect")
     client = JenkinsClient(
         settings.jenkins_base_url,
         settings.jenkins_user,
@@ -112,18 +166,25 @@ def archive_member_response(task: SrpmScanTask, archive_ref: str) -> Response:
     )
     try:
         content = client.get_artifact(
-            task.jenkins_job_full_name, task.jenkins_build_number, archive_path
+            task.jenkins_job_full_name,
+            task.jenkins_build_number,
+            archive_path,
+            max_bytes=limits.max_archive_bytes,
         )
+    except JenkinsArtifactTooLarge as exc:
+        raise HTTPException(status_code=413, detail="archive exceeds resource limits") from exc
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"unable to read archive: {exc}") from exc
+        raise HTTPException(status_code=502, detail="unable to read archive") from exc
     finally:
         client.close()
 
     try:
-        visible = {item.path for item in list_visible_members(content)}
+        visible = {item.path for item in list_visible_members(content, limits)}
         if member_path not in visible:
             raise KeyError(member_path)
-        member_content = read_visible_member(content, member_path)
+        member_content = read_visible_member(content, member_path, limits)
+    except ArchiveLimitError as exc:
+        raise HTTPException(status_code=413, detail="archive exceeds resource limits") from exc
     except (KeyError, OSError, ValueError, tarfile.TarError) as exc:
         raise HTTPException(status_code=404, detail="archive member not found") from exc
 

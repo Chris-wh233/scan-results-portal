@@ -61,7 +61,7 @@ def complete_task(
         settings.request_timeout_seconds,
     )
     try:
-        sync_task(db, client, task)
+        sync_task(db, client, task, settings.artifact_limits)
         db.commit()
     except Exception as exc:
         db.rollback()

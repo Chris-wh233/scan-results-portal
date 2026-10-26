@@ -6,7 +6,7 @@ from typing import Any
 from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
-from ....config import Settings
+from ....config import ArtifactLimits, Settings
 from ....jenkins import JenkinsClient
 from ....resync import resync_registered_tasks
 from ..domain.state import RPM_FAILED, RPM_FINISHED, RPM_NOT_AVAILABLE, RPM_RUNNING
@@ -31,9 +31,6 @@ RESULT_FILES = {
     "scan-results.html": "REPORT_HTML",
     "scan.log": "LOG",
 }
-MAX_RESULT_BYTES = 16 * 1024 * 1024
-
-
 def _cause_user(build: dict[str, Any]) -> str | None:
     for action in build.get("actions") or []:
         for cause in action.get("causes") or []:
@@ -85,14 +82,16 @@ def _read_artifact(
     client: JenkinsClient,
     task: RpmScanTask,
     artifact: dict[str, Any],
+    limits: ArtifactLimits,
 ) -> bytes:
     size = artifact.get("size")
-    if size is not None and int(size) > MAX_RESULT_BYTES:
+    if size is not None and int(size) > limits.max_parse_bytes:
         raise ValueError(f"artifact is too large to parse: {_artifact_name(artifact)}")
     return client.get_artifact(
         task.jenkins_job_full_name,
         task.jenkins_build_number,
         _artifact_name(artifact),
+        max_bytes=limits.max_parse_bytes,
     )
 
 
@@ -167,7 +166,9 @@ def sync_task(
     db: Session,
     client: JenkinsClient,
     task: RpmScanTask,
+    limits: ArtifactLimits | None = None,
 ) -> RpmScanTask:
+    limits = limits or ArtifactLimits()
     build = client.get_build(task.jenkins_job_full_name, task.jenkins_build_number)
     task.triggered_by = _cause_user(build) or task.triggered_by
     artifacts = _scan_artifacts(task, build)
@@ -176,8 +177,12 @@ def sync_task(
 
     required = {"scan-manifest.json", "scan-results.json"}
     if required.issubset(artifacts):
-        manifest = parse_manifest(_read_artifact(client, task, artifacts["scan-manifest.json"]))
-        results = parse_results(_read_artifact(client, task, artifacts["scan-results.json"]))
+        manifest = parse_manifest(
+            _read_artifact(client, task, artifacts["scan-manifest.json"], limits)
+        )
+        results = parse_results(
+            _read_artifact(client, task, artifacts["scan-results.json"], limits)
+        )
         _apply_manifest(task, manifest)
         _replace_results(db, task, results)
         task.state = (
@@ -203,7 +208,7 @@ def _resync_task(
     settings: Settings,
     task: RpmScanTask,
 ) -> RpmScanTask:
-    return sync_task(db, client, task)
+    return sync_task(db, client, task, settings.artifact_limits)
 
 
 def sync_registered_tasks(settings: Settings, db: Session) -> dict[str, int]:

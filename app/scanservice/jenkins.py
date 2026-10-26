@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
 from typing import Any
 from urllib.parse import quote
 
@@ -7,6 +8,10 @@ import httpx
 
 
 class JenkinsError(RuntimeError):
+    pass
+
+
+class JenkinsArtifactTooLarge(JenkinsError):
     pass
 
 
@@ -59,15 +64,59 @@ class JenkinsClient:
             },
         )
 
-    def get_artifact(self, job_name: str, number: int, relative_path: str) -> bytes:
+    def _artifact_url(self, job_name: str, number: int, relative_path: str) -> str:
         path = "/".join(
             quote(part, safe="") for part in relative_path.strip("/").split("/")
         )
-        response = self.client.get(
-            self._url(f"{self._job_path(job_name)}/{number}/artifact/{path}")
-        )
-        if response.status_code >= 400:
-            raise JenkinsError(
-                f"Jenkins returned HTTP {response.status_code} for artifact {relative_path}"
+        return self._url(f"{self._job_path(job_name)}/{number}/artifact/{path}")
+
+    @staticmethod
+    def _check_content_length(response: httpx.Response, max_bytes: int) -> None:
+        value = response.headers.get("content-length")
+        if value is not None and int(value) > max_bytes:
+            raise JenkinsArtifactTooLarge(
+                f"artifact exceeds the configured {max_bytes}-byte limit"
             )
-        return response.content
+
+    def iter_artifact(
+        self,
+        job_name: str,
+        number: int,
+        relative_path: str,
+        *,
+        max_bytes: int,
+        chunk_size: int = 64 * 1024,
+    ) -> Iterator[bytes]:
+        with self.client.stream(
+            "GET", self._artifact_url(job_name, number, relative_path)
+        ) as response:
+            if response.status_code >= 400:
+                raise JenkinsError(
+                    f"Jenkins returned HTTP {response.status_code} for artifact"
+                )
+            self._check_content_length(response, max_bytes)
+            total = 0
+            for chunk in response.iter_bytes(chunk_size=chunk_size):
+                total += len(chunk)
+                if total > max_bytes:
+                    raise JenkinsArtifactTooLarge(
+                        f"artifact exceeds the configured {max_bytes}-byte limit"
+                    )
+                yield chunk
+
+    def get_artifact(
+        self,
+        job_name: str,
+        number: int,
+        relative_path: str,
+        *,
+        max_bytes: int,
+    ) -> bytes:
+        return b"".join(
+            self.iter_artifact(
+                job_name,
+                number,
+                relative_path,
+                max_bytes=max_bytes,
+            )
+        )

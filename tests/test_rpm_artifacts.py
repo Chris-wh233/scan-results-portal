@@ -1,6 +1,9 @@
-import pytest
+import asyncio
 
-from conftest import RPM_BUILD_NUMBER, RPM_SCAN_KEY, FakeJenkinsClient
+import pytest
+from fastapi import HTTPException
+
+from conftest import RPM_BUILD_NUMBER, RPM_SCAN_KEY, FakeJenkinsClient, response_body
 
 from scanservice.modules.rpm.models import RpmScanArtifact, RpmScanTask
 from scanservice.modules.rpm.services import artifacts as artifacts_module
@@ -54,7 +57,7 @@ def test_view_serves_text_artifacts_inline(session, monkeypatch, name, artifact_
 
     assert response.headers["content-type"] == "text/plain; charset=utf-8"
     assert response.headers["content-disposition"] == f'inline; filename="{name}"'
-    assert response.body == b"content\n"
+    assert asyncio.run(response_body(response)) == b"content\n"
 
 
 def test_view_serves_html_with_its_own_type_and_sandbox(session, monkeypatch):
@@ -74,6 +77,7 @@ def test_view_serves_html_with_its_own_type_and_sandbox(session, monkeypatch):
     assert "script-src 'unsafe-inline'" in policy
     assert "connect-src 'none'" in policy
     assert "allow-same-origin" not in policy
+    assert asyncio.run(response_body(response)) == b"<html></html>"
 
 
 def test_download_keeps_original_media_type_and_attachment(session, monkeypatch):
@@ -88,4 +92,17 @@ def test_download_keeps_original_media_type_and_attachment(session, monkeypatch)
         response.headers["content-disposition"]
         == 'attachment; filename="scan-results.csv"'
     )
-    assert response.body == b"vendor,product\n"
+    assert asyncio.run(response_body(response)) == b"vendor,product\n"
+
+
+def test_known_oversized_artifact_is_rejected(session, monkeypatch, settings):
+    task, row = _task_with_artifact(
+        session, monkeypatch, "scan.log", "LOG", b"content"
+    )
+    row.size_bytes = settings.artifact_limits.max_download_bytes + 1
+    monkeypatch.setattr(artifacts_module, "get_settings", lambda: settings)
+
+    with pytest.raises(HTTPException) as exc_info:
+        artifact_response(task, row, download=True)
+
+    assert exc_info.value.status_code == 413

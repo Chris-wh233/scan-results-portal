@@ -63,6 +63,8 @@ def settings():
         jenkins_user="user",
         jenkins_token="token",
         ingest_token="ingest",
+        operator_token="operator",
+        operator_sync_rate_limit=6,
         recent_build_limit=20,
         request_timeout_seconds=5,
         title="Test Portal",

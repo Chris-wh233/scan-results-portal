@@ -32,6 +32,8 @@ class Settings:
     jenkins_user: str
     jenkins_token: str
     ingest_token: str
+    operator_token: str
+    operator_sync_rate_limit: int
     recent_build_limit: int
     request_timeout_seconds: float
     title: str
@@ -50,6 +52,10 @@ class Settings:
             jenkins_user=os.getenv("JENKINS_USER", ""),
             jenkins_token=os.getenv("JENKINS_TOKEN", ""),
             ingest_token=os.getenv("SCAN_SERVICE_INGEST_TOKEN", ""),
+            operator_token=os.getenv("SCAN_SERVICE_OPERATOR_TOKEN", ""),
+            operator_sync_rate_limit=int(
+                os.getenv("OPERATOR_SYNC_RATE_LIMIT_PER_MINUTE", "6")
+            ),
             recent_build_limit=int(
                 _env_or(sync, "recent_build_limit", "RECENT_BUILD_LIMIT", 20)
             ),

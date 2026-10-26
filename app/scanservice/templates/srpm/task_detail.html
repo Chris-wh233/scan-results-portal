@@ -30,9 +30,6 @@
       <tr><th>Finished</th><td>{{ task.finished_at|timestamp }}</td></tr>
     </tbody>
   </table>
-  {% if task.sync_error %}
-  <p class="error">Sync error: {{ task.sync_error }}</p>
-  {% endif %}
 </section>
 
 <section id="results" class="card">

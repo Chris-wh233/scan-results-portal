@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from ....config import get_settings
 from ....db import get_db
-from ....security import require_ingest_token
+from ....security import require_ingest_token, require_operator_token
 from ..schemas.events import SrpmEventRequest
 from ..services.artifacts import (
     archive_member_response,
@@ -126,7 +126,6 @@ def task_artifacts(task_id: int, db: Session = Depends(get_db)) -> list[dict[str
             "name": row.name,
             "artifact_type": row.artifact_type,
             "relative_path": row.relative_path,
-            "url": row.jenkins_url,
             "size_bytes": row.size_bytes,
         }
         for row in task.artifacts
@@ -153,7 +152,10 @@ def archive_member(
 
 
 @router.post("/sync")
-def sync_tasks(db: Session = Depends(get_db)) -> dict[str, Any]:
+def sync_tasks(
+    db: Session = Depends(get_db),
+    _: None = Depends(require_operator_token),
+) -> dict[str, Any]:
     try:
         return sync_registered_tasks(get_settings(), db)
     except Exception as exc:

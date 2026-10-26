@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from ....config import get_settings
 from ....db import get_db
-from ....security import require_ingest_token
+from ....security import require_ingest_token, require_operator_token
 from ..schemas.events import RpmEventRequest
 from ..services.artifacts import artifact_response, get_artifact
 from ..services.events import complete_task, fail_task, find_task, register_start
@@ -67,7 +67,10 @@ def task_detail(task_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
 
 
 @router.post("/sync")
-def sync_tasks(db: Session = Depends(get_db)) -> dict[str, int]:
+def sync_tasks(
+    db: Session = Depends(get_db),
+    _: None = Depends(require_operator_token),
+) -> dict[str, int]:
     return sync_registered_tasks(get_settings(), db)
 
 

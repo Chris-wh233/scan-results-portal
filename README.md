@@ -129,10 +129,10 @@ config/config.yaml
 
 ## 刷新行为
 
-SRPM 与 RPM 两个页面的刷新按钮语义一致：重新读取门户中**已登记且尚未进入
+主动同步是仅供内部运维使用的受保护操作。它重新读取门户中**已登记且尚未进入
 终态**（`RUNNING` / `NOT_AVAILABLE`）的任务，逐个回 Jenkins 重新同步，最多
 处理 `RECENT_BUILD_LIMIT`（默认 20）个。已 `FINISHED` / `FAILED` 的任务不会
-被改动，也不会从 Jenkins 导入没有登记过的构建。
+被改动，也不会从 Jenkins 导入没有登记过的构建。公开页面不提供同步按钮。
 
 事件接口不要求 Job 预先登记：只要事件里的 `jenkins_job_full_name` 是完整
 Job 名即可（支持 `packages/curl` 这类 folder 路径）。
@@ -162,6 +162,20 @@ GET /api/v1/{srpm|rpm}/tasks/{id}/artifacts/{artifact_id}/download
 
 ~~~text
 POST /api/v1/{srpm|rpm}/sync
+~~~
+
+同步接口需要独立的 operator Token：
+
+~~~text
+Authorization: Bearer <SCAN_SERVICE_OPERATOR_TOKEN>
+~~~
+
+例如：
+
+~~~bash
+curl -X POST \
+  -H "Authorization: Bearer $SCAN_SERVICE_OPERATOR_TOKEN" \
+  https://portal.example/api/v1/srpm/sync
 ~~~
 
 Jenkins 事件接口：

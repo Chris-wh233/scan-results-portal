@@ -52,7 +52,6 @@ def task_payload(task: SrpmScanTask) -> dict[str, Any]:
         "scan_duration_ms": task.scan_duration_ms,
         "last_synced_at": task.last_synced_at,
         "sync_status": task.sync_status,
-        "sync_error": task.sync_error,
     }
 
 

@@ -6,12 +6,6 @@
     <h1>SRPM Scan Tasks</h1>
     <p class="muted">{{ total }} task(s)</p>
   </div>
-  <button id="refresh" class="refresh-button" type="button" aria-label="刷新">
-    <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24">
-      <path d="M20 11a8 8 0 0 0-14.9-3.9L3 10"></path>
-      <path d="M3 4v6h6"></path>
-    </svg>
-  </button>
 </div>
 
 <form class="filters" method="get">
@@ -25,7 +19,6 @@
   <button type="submit">Search</button>
 </form>
 
-<div id="sync-status" class="muted"></div>
 <div class="table-wrap">
 <table class="tasks-table">
   <thead>
@@ -65,22 +58,4 @@
 </div>
 {% endif %}
 
-<script>
-document.getElementById("refresh").addEventListener("click", async () => {
-  const status = document.getElementById("sync-status");
-  const button = document.getElementById("refresh");
-  button.disabled = true;
-  status.textContent = "Synchronizing...";
-  try {
-    const response = await fetch("/api/v1/srpm/sync", {method: "POST"});
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.detail || "sync failed");
-    status.textContent = "Synced " + data.synced + "; failed " + data.failed + ". Reloading...";
-    window.location.reload();
-  } catch (error) {
-    status.textContent = error.message;
-    button.disabled = false;
-  }
-});
-</script>
 {% endblock %}

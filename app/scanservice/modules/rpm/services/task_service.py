@@ -78,5 +78,4 @@ def task_payload(task: RpmScanTask) -> dict[str, Any]:
         "created_at": task.created_at,
         "finished_at": task.finished_at,
         "sync_status": task.sync_status,
-        "sync_error": task.sync_error,
     }
